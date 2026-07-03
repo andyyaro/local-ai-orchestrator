@@ -88,6 +88,12 @@ def get_ollama_base_url() -> str:
     return cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
 
 
+def get_ollama_timeout() -> int:
+    """Return Ollama HTTP timeout in seconds."""
+    cfg = load_models_config()
+    return int(cfg.get("ollama", {}).get("request_timeout", 600))
+
+
 def get_inference_defaults() -> dict:
     cfg = load_models_config()
     return cfg.get("defaults", {"temperature": 0.7, "num_ctx": 4096})
