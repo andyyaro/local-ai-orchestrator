@@ -31,6 +31,7 @@ from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
 from orchestrator.config_loader import get_active_profile, get_model_for_role
+from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.database import (
     save_run,
     load_all_runs,
@@ -117,6 +118,40 @@ def collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
     return iterations_data
 
 
+def apply_code_verification_to_verdict(verdict: dict, code_feedback: str) -> dict:
+    """Force a hard fail when coding-mode verification finds broken code."""
+    if not code_feedback or not verification_failed(code_feedback):
+        return verdict
+
+    hard_fails = verdict.get("hard_fails", [])
+    if not isinstance(hard_fails, list):
+        hard_fails = []
+    if "broken_code" not in hard_fails:
+        hard_fails.append("broken_code")
+
+    verdict["hard_fails"] = hard_fails
+    verdict["pass"] = False
+    verdict["total_score"] = 0
+    verdict["rationale"] = (
+        str(verdict.get("rationale", ""))
+        + "\n\nCode verification failed before Judge pass/fail was accepted. "
+        + "Broken or blocked code cannot pass regardless of model score."
+    ).strip()
+    verdict["code_verification"] = code_feedback
+    return verdict
+
+
+def should_break_on_hard_fail(mode: str, verdict: dict, iteration: int,
+                              max_loops: int) -> bool:
+    """Allow coding-mode broken_code to continue until max loops."""
+    hard_fails = verdict.get("hard_fails") or []
+    if not hard_fails:
+        return False
+    if mode == "coding" and "broken_code" in hard_fails and iteration < max_loops:
+        return False
+    return True
+
+
 # ── Pipeline runner ──────────────────────────────────────────────────────────
 
 def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
@@ -139,6 +174,7 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             "max_loops": max_loops,
             "iterations_run": 0,
             "scores": [],
+            "code_verification": [],
             "stop_reason": "",
             "final_score": 0,
             "passed": False,
@@ -190,6 +226,7 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
         best_draft = draft
         best_score = 0
         previous_score = 0
+        previous_code_feedback = ""
         stop_reason = f"max_loops ({max_loops}) reached"
 
         critic_model = role_model("critic", selected_mode, model_main,
@@ -218,6 +255,12 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
 
             emit_step(event_queue, f"Loop {iteration} Critic", "running")
             critique = critic.run(goal=refined_goal, draft=draft)
+            if previous_code_feedback:
+                critique += (
+                    "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
+                    f"{previous_code_feedback}\n"
+                    "The next revision must fix these execution issues."
+                )
             save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
             emit_step(event_queue, f"Loop {iteration} Critic", "done", critique)
 
@@ -232,6 +275,19 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
             emit_step(event_queue, f"Loop {iteration} Fixer", "done", revised)
 
+            code_feedback = ""
+            if selected_mode == "coding":
+                emit_step(event_queue, f"Loop {iteration} Code Verification", "running")
+                code_feedback = verify_draft_code(revised)
+                save(run_dir, f"loop{iteration:02d}_code_verification.txt", code_feedback)
+                summary["code_verification"].append({
+                    "iteration": iteration,
+                    "failed": verification_failed(code_feedback),
+                    "feedback_file": f"loop{iteration:02d}_code_verification.txt",
+                })
+                emit_step(event_queue, f"Loop {iteration} Code Verification", "done",
+                          f"```text\n{code_feedback}\n```")
+
             emit_step(event_queue, f"Loop {iteration} Judge", "running")
             verdict = judge.run(
                 goal=refined_goal,
@@ -239,6 +295,8 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
                 iteration=iteration,
                 mode=selected_mode,
             )
+            if selected_mode == "coding":
+                verdict = apply_code_verification_to_verdict(verdict, code_feedback)
             save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
             emit_step(event_queue, f"Loop {iteration} Judge", "done",
                       f"```json\n{json.dumps(verdict, indent=2)}\n```")
@@ -246,7 +304,8 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             score = int(verdict["total_score"])
             summary["scores"].append(score)
 
-            if score > best_score:
+            code_failed = selected_mode == "coding" and verification_failed(code_feedback)
+            if score > best_score and not code_failed:
                 best_score = score
                 best_draft = revised
                 save(run_dir, "best_draft.txt", best_draft)
@@ -267,7 +326,7 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
 
             if iteration > 1:
                 improvement = score - previous_score
-                if improvement < min_improvement:
+                if improvement < min_improvement and not code_failed:
                     stop_reason = (
                         f"stalled (improvement {improvement} < "
                         f"min_improvement {min_improvement})"
@@ -275,12 +334,13 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
                     draft = revised
                     break
 
-            if verdict.get("hard_fails"):
+            if should_break_on_hard_fail(selected_mode, verdict, iteration, max_loops):
                 stop_reason = f"hard_fail: {verdict['hard_fails']}"
                 draft = revised
                 break
 
             previous_score = score
+            previous_code_feedback = code_feedback
             draft = revised
 
         # Final Synthesizer
@@ -402,6 +462,11 @@ with st.sidebar:
         st.warning(
             "Coding/debugging mode may use qwen2.5-coder:14b from config. "
             "Do not select it until that model is installed."
+        )
+    if mode == "coding":
+        st.warning(
+            "Coding mode executes generated Python code locally with a timeout "
+            "and a safety blocklist. Use only for tasks you trust."
         )
 
 
@@ -544,6 +609,15 @@ if run_btn:
                 st.caption(f"Stop reason: {summary['stop_reason']}")
                 st.caption(f"Run saved to: {event['run_dir']}")
                 st.caption(f"Database ID: {summary['db_run_id']}")
+
+                if summary.get("code_verification"):
+                    failed_checks = sum(
+                        1 for item in summary["code_verification"] if item["failed"]
+                    )
+                    st.caption(
+                        f"Code checks: {len(summary['code_verification'])} run, "
+                        f"{failed_checks} failed"
+                    )
 
                 if summary["scores"]:
                     st.subheader("Score history")
