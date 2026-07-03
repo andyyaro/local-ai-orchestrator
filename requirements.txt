@@ -1,0 +1,15 @@
+# Core HTTP and config
+requests>=2.31.0
+pyyaml>=6.0.1
+
+# LangGraph and LangChain Ollama integration
+langgraph>=0.2.0
+langchain-ollama>=0.1.0
+langchain-core>=0.2.0
+
+# Streamlit dashboard
+streamlit>=1.35.0
+
+# Development tools
+pytest>=8.0.0
+black>=24.0.0
