@@ -2,13 +2,6 @@
 orchestrator/graph.py
 
 LangGraph pipeline for the Local AI Orchestrator.
-
-Graph structure:
-  supervisor → planner → builder → critic → fixer → judge → router
-                                      ↑___________________________|
-                                      (if should_continue is True)
-                                                    ↓
-                                             (if False) synthesizer → END
 """
 
 import json
@@ -18,6 +11,7 @@ from typing import Literal
 from langgraph.graph import StateGraph, END
 
 from orchestrator.state import PipelineState
+from orchestrator.config_loader import get_model_for_role
 from agents.supervisor import SupervisorAgent
 from agents.planner import PlannerAgent
 from agents.builder import BuilderAgent
@@ -27,19 +21,25 @@ from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
 
 
-# ── File saving helper ────────────────────────────────────────────────────────
-
 def _save(run_dir: str, filename: str, content: str):
     path = Path(run_dir) / filename
     path.write_text(content, encoding="utf-8")
 
 
-# ── Node functions ────────────────────────────────────────────────────────────
-# Each node receives the full state dict and returns a partial dict
-# containing only the keys it wants to update.
+def _role_model(state: PipelineState, role: str) -> str:
+    mode = state.get("mode", "general")
+    model_main = state.get("model_main")
+    model_fast = state.get("model_fast")
+
+    if model_fast and role in {"supervisor", "planner", "critic"}:
+        return model_fast
+    if model_main and role in {"builder", "fixer", "judge", "synthesizer"}:
+        return model_main
+    return get_model_for_role(role, mode)
+
 
 def node_supervisor(state: PipelineState) -> dict:
-    agent = SupervisorAgent(model=state["model_fast"])
+    agent = SupervisorAgent(model=_role_model(state, "supervisor"))
     result = agent.run(goal=state["goal"])
     _save(state["run_dir"], "00_supervisor.json", json.dumps(result, indent=2))
     return {
@@ -49,15 +49,19 @@ def node_supervisor(state: PipelineState) -> dict:
 
 
 def node_planner(state: PipelineState) -> dict:
-    agent = PlannerAgent(model=state["model_fast"])
+    agent = PlannerAgent(model=_role_model(state, "planner"))
     plan = agent.run(goal=state["refined_goal"], mode=state["mode"])
     _save(state["run_dir"], "01_planner_plan.txt", plan)
     return {"plan": plan}
 
 
 def node_builder(state: PipelineState) -> dict:
-    agent = BuilderAgent(model=state["model_main"])
-    draft = agent.run(goal=state["refined_goal"], plan=state["plan"])
+    agent = BuilderAgent(model=_role_model(state, "builder"))
+    draft = agent.run(
+        goal=state["refined_goal"],
+        plan=state["plan"],
+        mode=state.get("mode", "general"),
+    )
     _save(state["run_dir"], "02_builder_draft_v0.txt", draft)
     return {
         "draft": draft,
@@ -73,7 +77,7 @@ def node_builder(state: PipelineState) -> dict:
 
 def node_critic(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
-    agent = CriticAgent(model=state["model_fast"])
+    agent = CriticAgent(model=_role_model(state, "critic"))
     critique = agent.run(goal=state["refined_goal"], draft=state["draft"])
     _save(state["run_dir"], f"loop{iteration:02d}_critic.txt", critique)
     return {"critique": critique}
@@ -81,12 +85,13 @@ def node_critic(state: PipelineState) -> dict:
 
 def node_fixer(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
-    agent = FixerAgent(model=state["model_main"])
+    agent = FixerAgent(model=_role_model(state, "fixer"))
     revised = agent.run(
         goal=state["refined_goal"],
         draft=state["draft"],
         critique=state["critique"],
         iteration=iteration,
+        mode=state.get("mode", "general"),
     )
     _save(state["run_dir"], f"loop{iteration:02d}_fixer.txt", revised)
     return {"revised": revised}
@@ -96,11 +101,12 @@ def node_judge(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
     threshold = state.get("threshold", 70)
 
-    agent = JudgeAgent(model=state["model_main"], pass_threshold=threshold)
+    agent = JudgeAgent(model=_role_model(state, "judge"), pass_threshold=threshold)
     verdict = agent.run(
         goal=state["refined_goal"],
         draft=state["revised"],
         iteration=iteration,
+        mode=state.get("mode", "general"),
     )
     _save(state["run_dir"], f"loop{iteration:02d}_judge.json",
           json.dumps(verdict, indent=2))
@@ -108,7 +114,6 @@ def node_judge(state: PipelineState) -> dict:
     score = verdict["total_score"]
     scores = state.get("scores", []) + [score]
 
-    # Track best draft
     best_score = state.get("best_score", 0)
     best_draft = state.get("best_draft", state["revised"])
     if score > best_score:
@@ -116,7 +121,6 @@ def node_judge(state: PipelineState) -> dict:
         best_draft = state["revised"]
         _save(state["run_dir"], "best_draft.txt", best_draft)
 
-    # Determine whether to continue
     max_loops = state.get("max_loops", 3)
     min_improvement = state.get("min_improvement", 5)
     previous_score = state.get("previous_score", 0)
@@ -126,15 +130,12 @@ def node_judge(state: PipelineState) -> dict:
     if verdict["pass"]:
         should_continue = False
         stop_reason = f"passed (score {score} >= threshold {threshold})"
-
     elif iteration >= max_loops:
         should_continue = False
         stop_reason = f"max_loops ({max_loops}) reached"
-
     elif verdict.get("hard_fails"):
         should_continue = False
         stop_reason = f"hard_fail: {verdict['hard_fails']}"
-
     elif iteration > 1:
         improvement = score - previous_score
         if improvement < min_improvement:
@@ -150,7 +151,7 @@ def node_judge(state: PipelineState) -> dict:
         "best_score": best_score,
         "best_draft": best_draft,
         "previous_score": score,
-        "draft": state["revised"],       # feed revision forward as new draft
+        "draft": state["revised"],
         "iteration": iteration + 1,
         "should_continue": should_continue,
         "stop_reason": stop_reason,
@@ -158,7 +159,7 @@ def node_judge(state: PipelineState) -> dict:
 
 
 def node_synthesizer(state: PipelineState) -> dict:
-    agent = SynthesizerAgent(model=state["model_main"])
+    agent = SynthesizerAgent(model=_role_model(state, "synthesizer"))
     final = agent.run(
         goal=state["refined_goal"],
         best_draft=state["best_draft"],
@@ -171,8 +172,8 @@ def node_synthesizer(state: PipelineState) -> dict:
         "goal": state["goal"],
         "refined_goal": state["refined_goal"],
         "mode": state.get("mode", "general"),
-        "model_main": state["model_main"],
-        "model_fast": state["model_fast"],
+        "model_main_override": state.get("model_main"),
+        "model_fast_override": state.get("model_fast"),
         "iterations_run": state.get("iteration", 1) - 1,
         "scores": state.get("scores", []),
         "best_score": state["best_score"],
@@ -185,24 +186,15 @@ def node_synthesizer(state: PipelineState) -> dict:
     return {"final_output": final}
 
 
-# ── Routing function ──────────────────────────────────────────────────────────
-
 def route_after_judge(state: PipelineState) -> Literal["critic", "synthesizer"]:
-    """
-    Conditional edge: after Judge, decide whether to loop back to Critic
-    or proceed to the Synthesizer.
-    """
     if state.get("should_continue", False):
         return "critic"
     return "synthesizer"
 
 
-# ── Build the graph ───────────────────────────────────────────────────────────
-
 def build_graph() -> StateGraph:
     graph = StateGraph(PipelineState)
 
-    # Add nodes
     graph.add_node("supervisor", node_supervisor)
     graph.add_node("planner", node_planner)
     graph.add_node("builder", node_builder)
@@ -211,26 +203,19 @@ def build_graph() -> StateGraph:
     graph.add_node("judge", node_judge)
     graph.add_node("synthesizer", node_synthesizer)
 
-    # Add unconditional edges (always proceed to next node)
     graph.add_edge("supervisor", "planner")
     graph.add_edge("planner", "builder")
     graph.add_edge("builder", "critic")
     graph.add_edge("critic", "fixer")
     graph.add_edge("fixer", "judge")
 
-    # Conditional edge after Judge
     graph.add_conditional_edges(
         "judge",
         route_after_judge,
-        {
-            "critic": "critic",           # loop back
-            "synthesizer": "synthesizer", # proceed to finish
-        },
+        {"critic": "critic", "synthesizer": "synthesizer"},
     )
 
     graph.add_edge("synthesizer", END)
-
-    # Set entry point
     graph.set_entry_point("supervisor")
 
     return graph.compile()
