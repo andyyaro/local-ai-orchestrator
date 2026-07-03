@@ -8,6 +8,7 @@ provider: ollama
 ollama:
   base_url: "http://localhost:11434"
   keep_alive: "5m"
+  request_timeout: 600
 
 # Options: bootstrap | serious | coding | fast
 active_profile: serious
