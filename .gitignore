@@ -1,0 +1,45 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Generated runs and logs
+runs/*
+!runs/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Local databases
+*.db
+*.sqlite3
+
+# Environment variables / secrets
+.env
+.env.local
+.env.*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code workspace settings
+.vscode/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Test/cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
