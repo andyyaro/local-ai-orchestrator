@@ -7,6 +7,7 @@ Main entry point for the Local AI Orchestrator terminal pipeline.
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from agents.synthesizer import SynthesizerAgent
 from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
+from orchestrator.logger import get_logger
 
 
 DEFAULT_MAX_LOOPS = 3
@@ -84,6 +86,24 @@ def _collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
     return iterations_data
 
 
+def _log_agent_call(log, agent_name: str, model: str, call_fn,
+                    iteration: int = 0):
+    """Run one agent call with Section 19 structured start/end/error logging."""
+    t0 = time.time()
+    log.agent_start(agent_name, model, iteration=iteration)
+    try:
+        result = call_fn()
+        log.agent_end(
+            agent_name,
+            chars=len(str(result)),
+            elapsed_ms=int((time.time() - t0) * 1000),
+        )
+        return result
+    except Exception as exc:
+        log.error(agent_name, str(exc))
+        raise
+
+
 def _apply_code_verification_to_verdict(verdict: dict, code_feedback: str,
                                         threshold: int) -> dict:
     """Force a hard fail when coding-mode verification finds broken code."""
@@ -132,6 +152,15 @@ def run_pipeline(
     min_improvement: int,
     run_dir: Path,
 ) -> tuple[dict, str]:
+    log = get_logger(run_dir.name)
+    log.run_start(
+        goal=goal,
+        model_main=model_main or "config-driven",
+        model_fast=model_fast or "config-driven",
+        max_loops=max_loops,
+        threshold=threshold,
+    )
+
     summary = {
         "goal": goal,
         "active_profile": get_active_profile(),
@@ -152,7 +181,12 @@ def run_pipeline(
     supervisor_model = _role_model("supervisor", "general", model_main, model_fast)
     summary["role_models"]["supervisor"] = supervisor_model
     supervisor = SupervisorAgent(model=supervisor_model)
-    sup_result = supervisor.run(goal=goal)
+    sup_result = _log_agent_call(
+        log,
+        "supervisor",
+        supervisor_model,
+        lambda: supervisor.run(goal=goal),
+    )
     refined_goal = sup_result["refined_goal"]
     mode = sup_result["mode"]
     summary["mode"] = mode
@@ -164,7 +198,12 @@ def run_pipeline(
     planner_model = _role_model("planner", mode, model_main, model_fast)
     summary["role_models"]["planner"] = planner_model
     planner = PlannerAgent(model=planner_model)
-    plan = planner.run(goal=refined_goal, mode=mode)
+    plan = _log_agent_call(
+        log,
+        "planner",
+        planner_model,
+        lambda: planner.run(goal=refined_goal, mode=mode),
+    )
     save(run_dir, "01_planner_plan.txt", plan)
     print(f"    Plan length  : {len(plan)} chars")
 
@@ -172,7 +211,12 @@ def run_pipeline(
     builder_model = _role_model("builder", mode, model_main, model_fast)
     summary["role_models"]["builder"] = builder_model
     builder = BuilderAgent(model=builder_model)
-    draft = builder.run(goal=refined_goal, plan=plan, mode=mode)
+    draft = _log_agent_call(
+        log,
+        "builder",
+        builder_model,
+        lambda: builder.run(goal=refined_goal, plan=plan, mode=mode),
+    )
     save(run_dir, "02_builder_draft_v0.txt", draft)
     print(f"    Draft length : {len(draft)} chars")
 
@@ -200,7 +244,13 @@ def run_pipeline(
         header(f"LOOP {iteration}/{max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
 
         print(f"  [Critic] Reviewing draft (iteration {iteration})...")
-        critique = critic.run(goal=refined_goal, draft=draft)
+        critique = _log_agent_call(
+            log,
+            "critic",
+            critic_model,
+            lambda: critic.run(goal=refined_goal, draft=draft),
+            iteration=iteration,
+        )
         if previous_code_feedback:
             critique += (
                 "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
@@ -209,12 +259,18 @@ def run_pipeline(
             )
         save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
 
-        revised = fixer.run(
-            goal=refined_goal,
-            draft=draft,
-            critique=critique,
+        revised = _log_agent_call(
+            log,
+            "fixer",
+            fixer_model,
+            lambda: fixer.run(
+                goal=refined_goal,
+                draft=draft,
+                critique=critique,
+                iteration=iteration,
+                mode=mode,
+            ),
             iteration=iteration,
-            mode=mode,
         )
         save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
 
@@ -222,20 +278,33 @@ def run_pipeline(
         if mode == "coding":
             print("  [Code Verification] Running extracted Python code...")
             code_feedback = verify_draft_code(revised)
+            code_failed = verification_failed(code_feedback)
             save(run_dir, f"loop{iteration:02d}_code_verification.txt", code_feedback)
             summary["code_verification"].append({
                 "iteration": iteration,
-                "failed": verification_failed(code_feedback),
+                "failed": code_failed,
                 "feedback_file": f"loop{iteration:02d}_code_verification.txt",
             })
             first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
+            log.code_verification(
+                iteration=iteration,
+                success=not code_failed,
+                hard_fail=code_failed,
+                summary=first_line,
+            )
             print(f"  [Code Verification] {first_line}")
 
-        verdict = judge.run(
-            goal=refined_goal,
-            draft=revised,
+        verdict = _log_agent_call(
+            log,
+            "judge",
+            judge_model,
+            lambda: judge.run(
+                goal=refined_goal,
+                draft=revised,
+                iteration=iteration,
+                mode=mode,
+            ),
             iteration=iteration,
-            mode=mode,
         )
         if mode == "coding":
             verdict = _apply_code_verification_to_verdict(verdict, code_feedback, threshold)
@@ -243,6 +312,13 @@ def run_pipeline(
 
         score = int(verdict["total_score"])
         summary["scores"].append(score)
+        log.score(
+            iteration=iteration,
+            score=score,
+            passed=bool(verdict["pass"]),
+            category_scores=verdict.get("scores", {}),
+            hard_fails=verdict.get("hard_fails", []),
+        )
         print(f"    Score: {score_bar(score)}")
 
         if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
@@ -280,11 +356,16 @@ def run_pipeline(
     synthesizer_model = _role_model("synthesizer", mode, model_main, model_fast)
     summary["role_models"]["synthesizer"] = synthesizer_model
     synthesizer = SynthesizerAgent(model=synthesizer_model)
-    final_output = synthesizer.run(
-        goal=refined_goal,
-        best_draft=best_draft,
-        score=best_score,
-        iterations=summary["iterations_run"],
+    final_output = _log_agent_call(
+        log,
+        "synthesizer",
+        synthesizer_model,
+        lambda: synthesizer.run(
+            goal=refined_goal,
+            best_draft=best_draft,
+            score=best_score,
+            iterations=summary["iterations_run"],
+        ),
     )
     save(run_dir, "final_output.txt", final_output)
 
@@ -292,6 +373,12 @@ def run_pipeline(
     summary["final_score"] = best_score
     summary["passed"] = best_score >= threshold
     save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
+
+    log.stop(
+        reason=stop_reason,
+        final_score=best_score,
+        iterations=summary["iterations_run"],
+    )
 
     iterations_data = _collect_iterations(run_dir, summary["scores"])
     db_run_id = save_run(
