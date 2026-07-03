@@ -31,6 +31,12 @@ from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
 from orchestrator.config_loader import get_active_profile, get_model_for_role
+from orchestrator.database import (
+    save_run,
+    load_all_runs,
+    load_run_by_id,
+    get_db_stats,
+)
 
 RUNS_DIR = ROOT / "runs"
 RUNS_DIR.mkdir(exist_ok=True)
@@ -89,6 +95,26 @@ def emit_step(event_queue: Queue, agent: str, status: str, output: str = ""):
         "status": status,
         "output": output,
     })
+
+
+def collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
+    """Load saved loop artifacts so they can be stored in SQLite."""
+    iterations_data = []
+    for i, score in enumerate(scores, start=1):
+        critique_path = run_dir / f"loop{i:02d}_critic.txt"
+        fixer_path = run_dir / f"loop{i:02d}_fixer.txt"
+        judge_path = run_dir / f"loop{i:02d}_judge.json"
+        iterations_data.append({
+            "iteration": i,
+            "critique": critique_path.read_text(encoding="utf-8")
+                        if critique_path.exists() else "",
+            "revised_draft": fixer_path.read_text(encoding="utf-8")
+                             if fixer_path.exists() else "",
+            "verdict": json.loads(judge_path.read_text(encoding="utf-8"))
+                       if judge_path.exists() else {},
+            "score": score,
+        })
+    return iterations_data
 
 
 # ── Pipeline runner ──────────────────────────────────────────────────────────
@@ -275,6 +301,23 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
         summary["stop_reason"] = stop_reason
         summary["final_score"] = best_score
         summary["passed"] = best_score >= threshold
+
+        iterations_data = collect_iterations(run_dir, summary["scores"])
+        db_run_id = save_run(
+            goal=goal,
+            refined_goal=refined_goal,
+            mode=selected_mode,
+            model_main=model_main or builder_model,
+            model_fast=model_fast or critic_model,
+            final_score=best_score,
+            passed=(best_score >= threshold),
+            stop_reason=stop_reason,
+            scores=summary["scores"],
+            run_dir=str(run_dir),
+            final_output=final_output,
+            iterations_data=iterations_data,
+        )
+        summary["db_run_id"] = db_run_id
         save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
 
         event_queue.put({
@@ -500,6 +543,7 @@ if run_btn:
 
                 st.caption(f"Stop reason: {summary['stop_reason']}")
                 st.caption(f"Run saved to: {event['run_dir']}")
+                st.caption(f"Database ID: {summary['db_run_id']}")
 
                 if summary["scores"]:
                     st.subheader("Score history")
@@ -519,3 +563,62 @@ if run_btn:
 
     if thread.is_alive():
         thread.join(timeout=5)
+
+
+# ── Run history panel ─────────────────────────────────────────────────────────
+
+st.divider()
+st.subheader("🗂️ Run History")
+
+stats = get_db_stats()
+stat_a, stat_b, stat_c = st.columns(3)
+stat_a.metric("Total runs", stats["total_runs"])
+stat_b.metric("Passed runs", stats["passed_runs"])
+stat_c.metric("Average score", f"{stats['average_score']}/100")
+
+history_runs = load_all_runs(limit=10)
+if not history_runs:
+    st.info("No saved runs yet. Run the pipeline once to populate history.")
+else:
+    table_rows = []
+    for item in history_runs:
+        table_rows.append({
+            "ID": item["id"],
+            "Timestamp": item["timestamp"][:19],
+            "Score": item["final_score"],
+            "Passed": "Yes" if item["passed"] else "No",
+            "Loops": item["iterations"],
+            "Mode": item["mode"],
+            "Goal": item["goal"][:80],
+        })
+
+    st.dataframe(table_rows, width="stretch", hide_index=True)
+
+    selected_id = st.selectbox(
+        "Open run details",
+        options=[item["id"] for item in history_runs],
+        format_func=lambda run_id: f"Run #{run_id}",
+        key="history_run_selector",
+    )
+
+    selected_run = load_run_by_id(int(selected_id))
+    if selected_run:
+        with st.expander("Selected run details", expanded=False):
+            st.markdown(f"**Goal:** {selected_run['goal']}")
+            st.markdown(f"**Refined goal:** {selected_run['refined_goal']}")
+            st.markdown(f"**Mode:** `{selected_run['mode']}`")
+            st.markdown(f"**Final score:** `{selected_run['final_score']}/100`")
+            st.markdown(f"**Passed:** {'Yes' if selected_run['passed'] else 'No'}")
+            st.markdown(f"**Stop reason:** {selected_run['stop_reason']}")
+            st.markdown(f"**Run dir:** `{selected_run['run_dir']}`")
+
+            if selected_run.get("iterations_detail"):
+                st.markdown("### Iterations")
+                for item in selected_run["iterations_detail"]:
+                    st.markdown(
+                        f"**Iteration {item['iteration']} — score {item['score']}/100**"
+                    )
+                    st.caption(item.get("critique", "")[:500])
+
+            st.markdown("### Final output")
+            st.markdown(selected_run.get("final_output", "[not stored]"))
