@@ -378,7 +378,7 @@ goal = st.text_area(
 
 col1, col2 = st.columns([1, 4])
 with col1:
-    run_btn = st.button("▶  Run Pipeline", type="primary", use_container_width=True)
+    run_btn = st.button("▶  Run Pipeline", type="primary", width="stretch")
 with col2:
     st.caption(
         "Runtime depends on selected models. Serious profile runs can take several "
@@ -467,7 +467,7 @@ if run_btn:
                 if len(scores_so_far) > 1:
                     st.line_chart(
                         {"Score": scores_so_far},
-                        use_container_width=True,
+                        width="stretch",
                         height=200,
                     )
                 elif scores_so_far:
@@ -505,7 +505,7 @@ if run_btn:
                     st.subheader("Score history")
                     st.line_chart(
                         {"Score": summary["scores"]},
-                        use_container_width=True,
+                        width="stretch",
                         height=200,
                     )
 
