@@ -19,6 +19,7 @@ from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
 from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
+from orchestrator.code_runner import verify_draft_code, verification_failed
 
 
 DEFAULT_MAX_LOOPS = 3
@@ -83,6 +84,45 @@ def _collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
     return iterations_data
 
 
+def _apply_code_verification_to_verdict(verdict: dict, code_feedback: str,
+                                        threshold: int) -> dict:
+    """Force a hard fail when coding-mode verification finds broken code."""
+    if not code_feedback or not verification_failed(code_feedback):
+        return verdict
+
+    hard_fails = verdict.get("hard_fails", [])
+    if not isinstance(hard_fails, list):
+        hard_fails = []
+    if "broken_code" not in hard_fails:
+        hard_fails.append("broken_code")
+
+    verdict["hard_fails"] = hard_fails
+    verdict["pass"] = False
+    verdict["total_score"] = 0
+    verdict["rationale"] = (
+        str(verdict.get("rationale", ""))
+        + "\n\nCode verification failed before Judge pass/fail was accepted. "
+        + "Broken or blocked code cannot pass regardless of model score."
+    ).strip()
+    verdict["code_verification"] = code_feedback
+    print("  [Code Verification] Hard fail: broken_code overrides Judge score")
+    return verdict
+
+
+def _should_break_on_hard_fail(mode: str, verdict: dict, iteration: int,
+                               max_loops: int) -> bool:
+    """
+    Existing hard failures stop the loop. In coding mode, broken_code is allowed
+    to continue until max loops so the next Fixer pass can use execution feedback.
+    """
+    hard_fails = verdict.get("hard_fails") or []
+    if not hard_fails:
+        return False
+    if mode == "coding" and "broken_code" in hard_fails and iteration < max_loops:
+        return False
+    return True
+
+
 def run_pipeline(
     goal: str,
     model_main: str | None,
@@ -102,6 +142,7 @@ def run_pipeline(
         "max_loops": max_loops,
         "iterations_run": 0,
         "scores": [],
+        "code_verification": [],
         "stop_reason": "",
         "final_score": 0,
         "passed": False,
@@ -138,6 +179,7 @@ def run_pipeline(
     best_draft = draft
     best_score = 0
     previous_score = 0
+    previous_code_feedback = ""
     stop_reason = "max_loops"
 
     critic_model = _role_model("critic", mode, model_main, model_fast)
@@ -155,10 +197,16 @@ def run_pipeline(
 
     for iteration in range(1, max_loops + 1):
         summary["iterations_run"] = iteration
-        header(f"LOOP {iteration}/{max_loops}", "CRITIC → FIXER → JUDGE")
+        header(f"LOOP {iteration}/{max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
 
         print(f"  [Critic] Reviewing draft (iteration {iteration})...")
         critique = critic.run(goal=refined_goal, draft=draft)
+        if previous_code_feedback:
+            critique += (
+                "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
+                f"{previous_code_feedback}\n"
+                "The next revision must fix these execution issues."
+            )
         save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
 
         revised = fixer.run(
@@ -170,19 +218,34 @@ def run_pipeline(
         )
         save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
 
+        code_feedback = ""
+        if mode == "coding":
+            print("  [Code Verification] Running extracted Python code...")
+            code_feedback = verify_draft_code(revised)
+            save(run_dir, f"loop{iteration:02d}_code_verification.txt", code_feedback)
+            summary["code_verification"].append({
+                "iteration": iteration,
+                "failed": verification_failed(code_feedback),
+                "feedback_file": f"loop{iteration:02d}_code_verification.txt",
+            })
+            first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
+            print(f"  [Code Verification] {first_line}")
+
         verdict = judge.run(
             goal=refined_goal,
             draft=revised,
             iteration=iteration,
             mode=mode,
         )
+        if mode == "coding":
+            verdict = _apply_code_verification_to_verdict(verdict, code_feedback, threshold)
         save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
 
-        score = verdict["total_score"]
+        score = int(verdict["total_score"])
         summary["scores"].append(score)
         print(f"    Score: {score_bar(score)}")
 
-        if score > best_score:
+        if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
             best_score = score
             best_draft = revised
             save(run_dir, "best_draft.txt", best_draft)
@@ -194,7 +257,7 @@ def run_pipeline(
 
         if iteration > 1:
             improvement = score - previous_score
-            if improvement < min_improvement:
+            if improvement < min_improvement and not (mode == "coding" and verification_failed(code_feedback)):
                 stop_reason = (
                     f"stalled (improvement {improvement} < "
                     f"min_improvement {min_improvement})"
@@ -202,12 +265,13 @@ def run_pipeline(
                 draft = revised
                 break
 
-        if verdict.get("hard_fails"):
+        if _should_break_on_hard_fail(mode, verdict, iteration, max_loops):
             stop_reason = f"hard_fail: {verdict['hard_fails']}"
             draft = revised
             break
 
         previous_score = score
+        previous_code_feedback = code_feedback
         draft = revised
     else:
         stop_reason = f"max_loops ({max_loops}) reached"
@@ -322,6 +386,9 @@ def main():
     if summary["scores"]:
         score_history = " → ".join(str(s) for s in summary["scores"])
         print(f"  Score history : {score_history}")
+    if summary.get("code_verification"):
+        failures = sum(1 for item in summary["code_verification"] if item["failed"])
+        print(f"  Code checks   : {len(summary['code_verification'])} run, {failures} failed")
     if summary.get("db_run_id"):
         print(f"  Database ID   : {summary['db_run_id']}")
     print(f"  Time elapsed  : {elapsed}s")
