@@ -1,31 +1,15 @@
-"""
-agents/judge.py
-
-The Judge agent scores a draft against the original goal and returns
-a structured JSON verdict. It decides whether the output passes the
-quality threshold.
-
-Expected JSON output format:
-{
-    "scores": {
-        "completeness": 0-25,
-        "accuracy": 0-25,
-        "clarity": 0-25,
-        "usefulness": 0-25
-    },
-    "total_score": 0-100,
-    "pass": true/false,
-    "hard_fails": [],
-    "rationale": "One paragraph explaining the score."
-}
-"""
-
 import json
 import re
 from agents.base_agent import BaseAgent
 
 
-PASS_THRESHOLD = 70  # default; overridden by pipeline caller
+PASS_THRESHOLD = 70
+DEFAULT_WEIGHTS = {
+    "completeness": 25,
+    "accuracy": 25,
+    "clarity": 25,
+    "usefulness": 25,
+}
 
 
 class JudgeAgent(BaseAgent):
@@ -34,24 +18,27 @@ class JudgeAgent(BaseAgent):
         super().__init__(model=model, role="judge", **kwargs)
         self.pass_threshold = pass_threshold
 
-    def run(self, goal: str, draft: str, iteration: int = 1) -> dict:
-        """
-        Score the draft and return a verdict dict.
+    def run(self, goal: str, draft: str, iteration: int = 1,
+            mode: str = "general") -> dict:
+        from orchestrator.modes import get_judge_note, get_scoring_weights
 
-        Args:
-            goal:      The user's original goal statement.
-            draft:     The draft to be scored.
-            iteration: Which iteration this is (for logging context).
-
-        Returns:
-            A dict matching the JSON schema above.
-            On unrecoverable parse failure, returns a safe fallback dict.
-        """
         system_prompt = self.load_prompt_template()
+        judge_note = get_judge_note(mode)
+        weights = get_scoring_weights(mode)
 
         full_prompt = f"""{system_prompt}
 
-ORIGINAL GOAL:
+MODE-SPECIFIC INSTRUCTION:
+{judge_note}
+
+SCORING WEIGHTS FOR THIS MODE:
+- completeness : {weights['completeness']} points max
+- accuracy     : {weights['accuracy']} points max
+- clarity      : {weights['clarity']} points max
+- usefulness   : {weights['usefulness']} points max
+Total: 100 points
+
+GOAL:
 {goal}
 
 DRAFT TO SCORE (iteration {iteration}):
@@ -60,15 +47,14 @@ DRAFT TO SCORE (iteration {iteration}):
 Return ONLY the JSON object. No explanation, no markdown, no code fences.
 The first character must be {{ and the final character must be }}.
 """
-        print(f"  [Judge] Calling {self.model} (iteration {iteration})...")
+        print(f"  [Judge] Calling {self.model} (iteration {iteration}, mode: {mode})...")
 
-        # Try up to 3 times to get valid JSON
         raw = ""
         for attempt in range(1, 4):
             raw = self.call_model(full_prompt)
             verdict = self._parse_json(raw)
             if verdict is not None:
-                verdict = self._validate_and_fix(verdict)
+                verdict = self._validate_and_fix(verdict, weights)
                 verdict["pass"] = verdict["total_score"] >= self.pass_threshold
                 print(
                     f"  [Judge] Score: {verdict['total_score']}/100 "
@@ -77,37 +63,23 @@ The first character must be {{ and the final character must be }}.
                 return verdict
             print(f"  [Judge] Attempt {attempt}: could not parse JSON. Retrying...")
 
-        # All attempts failed — return a conservative fallback
         print("  [Judge] WARNING: Could not parse Judge output after 3 attempts.")
         print(f"  [Judge] Raw output was:\n{raw[:500]}")
         return self._fallback_verdict(raw)
 
-    # ── Private helpers ───────────────────────────────────────────────────────
-
     def _parse_json(self, text: str) -> dict | None:
-        """
-        Try to extract a JSON object from the model's response.
-        Handles clean JSON, markdown fences, leading/trailing text,
-        and the common Bootstrap-model error of omitting the final closing brace.
-        """
         candidates = []
-
         raw = text.strip()
         candidates.append(raw)
 
-        # Strip markdown code fences and retry.
         stripped = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
         candidates.append(stripped)
 
-        # Extract the substring between the first opening brace and the last
-        # closing brace. This handles leading/trailing commentary.
         first_open = stripped.find("{")
         last_close = stripped.rfind("}")
         if first_open != -1 and last_close != -1 and last_close > first_open:
             candidates.append(stripped[first_open:last_close + 1])
 
-        # If the model started a JSON object but forgot one or more final braces,
-        # append only the number of braces needed to balance the object.
         if first_open != -1:
             possible = stripped[first_open:]
             open_count = possible.count("{")
@@ -123,7 +95,6 @@ The first character must be {{ and the final character must be }}.
         return None
 
     def _try_load_json(self, candidate: str) -> dict | None:
-        """Return a parsed JSON dict, or None if parsing fails."""
         try:
             parsed = json.loads(candidate)
             if isinstance(parsed, dict):
@@ -132,44 +103,34 @@ The first character must be {{ and the final character must be }}.
             return None
         return None
 
-    def _validate_and_fix(self, verdict: dict) -> dict:
-        """
-        Ensure required keys exist and values are in range.
-        Fills in safe defaults for any missing fields.
-        """
-        # Ensure scores dict exists
+    def _validate_and_fix(self, verdict: dict, weights: dict | None = None) -> dict:
+        weights = weights or DEFAULT_WEIGHTS
+
         if "scores" not in verdict or not isinstance(verdict["scores"], dict):
             verdict["scores"] = {
-                "completeness": 15,
-                "accuracy": 15,
-                "clarity": 15,
-                "usefulness": 15,
+                "completeness": min(15, weights.get("completeness", 25)),
+                "accuracy": min(15, weights.get("accuracy", 25)),
+                "clarity": min(15, weights.get("clarity", 25)),
+                "usefulness": min(15, weights.get("usefulness", 25)),
             }
 
-        # Clamp each score to 0–25
         for key in ["completeness", "accuracy", "clarity", "usefulness"]:
             if key not in verdict["scores"]:
-                verdict["scores"][key] = 15
-            verdict["scores"][key] = max(0, min(25, int(verdict["scores"].get(key, 15))))
+                verdict["scores"][key] = min(15, weights.get(key, 25))
+            max_points = int(weights.get(key, 25))
+            verdict["scores"][key] = max(0, min(max_points, int(verdict["scores"].get(key, 0))))
 
-        # Recompute total_score from individual scores (do not trust the model's sum)
         verdict["total_score"] = sum(verdict["scores"].values())
 
-        # Ensure hard_fails is a list
         if "hard_fails" not in verdict or not isinstance(verdict["hard_fails"], list):
             verdict["hard_fails"] = []
 
-        # Ensure rationale is a string
         if "rationale" not in verdict or not isinstance(verdict["rationale"], str):
             verdict["rationale"] = "No rationale provided."
 
         return verdict
 
     def _fallback_verdict(self, raw_text: str) -> dict:
-        """
-        Return a conservative failing verdict when JSON parsing fails entirely.
-        Saves the raw output so you can inspect it.
-        """
         return {
             "scores": {
                 "completeness": 10,
