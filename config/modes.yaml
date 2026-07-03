@@ -1,0 +1,111 @@
+# config/modes.yaml
+# Defines how each workflow mode modifies pipeline behavior.
+
+modes:
+  writing:
+    description: "Essays, blog posts, explanations, and documentation"
+    output_format: "Prose with clear sections and a conclusion. Well-structured paragraphs."
+    prompt_suffix: |
+      This is a WRITING task. Prioritize:
+      - Clear, engaging prose
+      - Logical structure with an introduction, body, and conclusion
+      - Concrete examples that illustrate abstract points
+      - Active voice and varied sentence length
+      Avoid bullet-point-only responses. Write in full paragraphs.
+    scoring_weights:
+      completeness: 25
+      accuracy: 20
+      clarity: 30
+      usefulness: 25
+    judge_note: "Pay extra attention to prose quality and argument flow."
+
+  coding:
+    description: "Writing new Python code, functions, scripts, or programs"
+    output_format: "Runnable Python code with inline comments. Include example usage."
+    prompt_suffix: |
+      This is a CODING task. The output must be:
+      - Runnable Python code
+      - Syntactically correct
+      - Include at minimum one usage example
+      - Include brief inline comments explaining non-obvious logic
+      - Use clear variable and function names
+      Do not write pseudocode unless explicitly asked. Write real, runnable code.
+    scoring_weights:
+      completeness: 20
+      accuracy: 35
+      clarity: 20
+      usefulness: 25
+    judge_note: |
+      For coding tasks: accuracy means the code is syntactically correct and
+      logically sound. Broken or non-runnable code must be scored 0 for accuracy
+      and must be listed as a hard fail.
+
+  planning:
+    description: "Project plans, roadmaps, decision frameworks, and strategy"
+    output_format: "Structured plan with numbered phases, tasks, owners, and success criteria."
+    prompt_suffix: |
+      This is a PLANNING task. The output must be:
+      - A structured, numbered plan
+      - Each phase or step includes: what, why, and success criteria
+      - Realistic and actionable
+      - Ordered logically with dependencies considered
+      Avoid lengthy prose. Use structured lists or numbered steps.
+    scoring_weights:
+      completeness: 30
+      accuracy: 20
+      clarity: 25
+      usefulness: 25
+    judge_note: "Judge the plan on whether someone could actually follow it."
+
+  debugging:
+    description: "Diagnosing and fixing errors in existing code or reasoning"
+    output_format: "Numbered hypotheses, root cause analysis, and a concrete fix."
+    prompt_suffix: |
+      This is a DEBUGGING task. Structure the response as:
+      1. Restate the problem clearly
+      2. List likely root causes in order of probability
+      3. Explain diagnostic steps for each hypothesis
+      4. Provide the recommended fix with exact code changes
+      5. Explain how to verify the fix worked
+      Be concrete. Do not suggest a vague maybe without explaining how to check.
+    scoring_weights:
+      completeness: 20
+      accuracy: 40
+      clarity: 20
+      usefulness: 20
+    judge_note: |
+      For debugging: accuracy is the dominant criterion. A wrong diagnosis is worse
+      than a plain but correct one. A fix that does not resolve the described problem
+      must score 0 for accuracy.
+
+  study:
+    description: "Concept explanations, learning guides, and summaries"
+    output_format: "Explanation that builds from simple to complex, with analogies and examples."
+    prompt_suffix: |
+      This is a STUDY/EXPLANATION task. Write for someone who is smart and motivated
+      but unfamiliar with this specific topic. Structure the explanation:
+      1. Start with the simplest possible summary
+      2. Build to a fuller explanation step by step
+      3. Use at least one concrete analogy
+      4. Include at least one practical example
+      5. End with what the reader should understand now and what to learn next
+      Avoid assuming prior knowledge of domain-specific terms without defining them.
+    scoring_weights:
+      completeness: 25
+      accuracy: 25
+      clarity: 30
+      usefulness: 20
+    judge_note: "Judge whether a smart beginner would actually understand this."
+
+  general:
+    description: "Mixed tasks or unclear goal type"
+    output_format: "Whatever format best serves the goal."
+    prompt_suffix: |
+      Respond in whatever format best serves the goal.
+      Be thorough, accurate, and clear. Structure the response logically.
+    scoring_weights:
+      completeness: 25
+      accuracy: 25
+      clarity: 25
+      usefulness: 25
+    judge_note: "Apply balanced judgment across all four rubric categories."
