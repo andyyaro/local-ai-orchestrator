@@ -1,0 +1,65 @@
+# config/models.yaml
+#
+# Model configuration for the Local AI Orchestrator.
+# Change active_profile to swap models without editing Python code.
+
+provider: ollama
+
+ollama:
+  base_url: "http://localhost:11434"
+  keep_alive: "5m"
+
+# Options: bootstrap | serious | coding | fast
+active_profile: bootstrap
+
+profiles:
+  bootstrap:
+    supervisor: "llama3.2:3b"
+    planner: "llama3.2:3b"
+    builder: "llama3.2:3b"
+    critic: "llama3.2:3b"
+    fixer: "llama3.2:3b"
+    judge: "llama3.2:3b"
+    synthesizer: "llama3.2:3b"
+
+  serious:
+    supervisor: "llama3.1:8b"
+    planner: "llama3.1:8b"
+    builder: "qwen2.5:14b"
+    critic: "gemma3:12b"
+    fixer: "qwen2.5:14b"
+    judge: "phi4:14b"
+    synthesizer: "qwen2.5:14b"
+
+  coding:
+    supervisor: "llama3.1:8b"
+    planner: "llama3.1:8b"
+    builder: "qwen2.5-coder:14b"
+    critic: "gemma3:12b"
+    fixer: "qwen2.5-coder:14b"
+    judge: "phi4:14b"
+    synthesizer: "qwen2.5:14b"
+
+  fast:
+    supervisor: "llama3.2:3b"
+    planner: "llama3.2:3b"
+    builder: "llama3.1:8b"
+    critic: "llama3.2:3b"
+    fixer: "llama3.1:8b"
+    judge: "llama3.1:8b"
+    synthesizer: "llama3.1:8b"
+
+mode_overrides:
+  coding:
+    builder: "qwen2.5-coder:14b"
+    fixer: "qwen2.5-coder:14b"
+  debugging:
+    builder: "qwen2.5-coder:14b"
+    fixer: "qwen2.5-coder:14b"
+
+defaults:
+  temperature: 0.7
+  num_ctx: 4096
+
+memory:
+  keep_alive: "5m"
