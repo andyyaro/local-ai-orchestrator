@@ -10,7 +10,7 @@ ollama:
   keep_alive: "5m"
 
 # Options: bootstrap | serious | coding | fast
-active_profile: bootstrap
+active_profile: serious
 
 profiles:
   bootstrap:
