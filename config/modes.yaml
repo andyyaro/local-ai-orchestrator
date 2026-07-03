@@ -1,0 +1,32 @@
+# Workflow mode configuration.
+# These rubrics will be expanded as the terminal MVP matures.
+
+active_mode: planning
+
+modes:
+  writing:
+    description: Long-form writing, explanation, essays, blog posts, and polished text.
+    pass_threshold: 75
+    max_loops: 3
+
+  coding:
+    description: Code generation and code improvement tasks.
+    pass_threshold: 80
+    max_loops: 3
+    run_tests: true
+
+  planning:
+    description: Project plans, decision frameworks, implementation roadmaps, and study plans.
+    pass_threshold: 70
+    max_loops: 3
+
+  debugging:
+    description: Debugging existing code, interpreting errors, and proposing fixes.
+    pass_threshold: 80
+    max_loops: 3
+    run_tests: true
+
+  study:
+    description: Learning support, concept explanation, and exam preparation.
+    pass_threshold: 75
+    max_loops: 2
