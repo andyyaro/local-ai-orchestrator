@@ -1,28 +1,21 @@
 """
 agents/base_agent.py
 
-Base class for all pipeline agents. Provides shared Ollama call logic,
+Base class for all pipeline agents. Provides shared model-call logic,
 prompt template loading, and error handling. All agent classes inherit from
-BaseAgent and override the `run()` method.
+BaseAgent and override the run() method.
 """
 
-import requests
-import json
 import time
 import sys
 from pathlib import Path
 
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class BaseAgent:
-    """
-    Shared foundation for all pipeline agents.
-
-    Subclasses must set self.role and self.model, then implement run().
-    """
+    """Shared foundation for all pipeline agents."""
 
     def __init__(self, model: str, role: str, temperature: float = 0.7,
                  num_ctx: int = 4096, max_retries: int = 2):
@@ -43,56 +36,40 @@ class BaseAgent:
         return template_path.read_text(encoding="utf-8").strip()
 
     def call_model(self, prompt: str) -> str:
-        """
-        Send a prompt to Ollama and return the response text.
-        Retries up to self.max_retries times on transient errors.
-        """
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_ctx": self.num_ctx,
-            },
-        }
+        """Send prompt through the configured model adapter with retry."""
+        from orchestrator.adapters import get_adapter
+        from orchestrator.config_loader import get_inference_defaults
+
+        adapter = get_adapter()
+        defaults = get_inference_defaults()
+        temperature = getattr(self, "temperature", defaults.get("temperature", 0.7))
+        num_ctx = getattr(self, "num_ctx", defaults.get("num_ctx", 4096))
 
         for attempt in range(1, self.max_retries + 2):
             try:
-                response = requests.post(
-                    OLLAMA_URL, json=payload, timeout=180
+                text = adapter.call(
+                    model=self.model,
+                    prompt=prompt,
+                    temperature=temperature,
+                    num_ctx=num_ctx,
                 )
-                response.raise_for_status()
-                data = response.json()
-                text = data.get("response", "").strip()
                 if not text:
-                    raise ValueError("Ollama returned an empty response.")
+                    raise ValueError("Adapter returned empty response.")
                 return text
-
-            except requests.exceptions.ConnectionError:
-                self._fatal(
-                    "Cannot connect to Ollama at http://localhost:11434\n"
-                    "Start Ollama: open -a Ollama"
-                )
-
-            except requests.exceptions.Timeout:
+            except RuntimeError as e:
                 if attempt <= self.max_retries:
-                    print(f"  [WARN] Timeout on attempt {attempt}, retrying...")
-                    time.sleep(3)
-                    continue
-                self._fatal(
-                    f"Request timed out after {self.max_retries + 1} attempts.\n"
-                    "Try a smaller model or check memory pressure."
-                )
-
-            except (requests.exceptions.HTTPError, ValueError) as e:
-                if attempt <= self.max_retries:
-                    print(f"  [WARN] Error on attempt {attempt}: {e}. Retrying...")
+                    print(f"  [WARN] {self.role} attempt {attempt} failed: {e}. Retrying...")
                     time.sleep(3)
                     continue
                 self._fatal(str(e))
+            except ValueError as e:
+                if attempt <= self.max_retries:
+                    print(f"  [WARN] {self.role} empty response, retrying...")
+                    time.sleep(2)
+                    continue
+                self._fatal(str(e))
 
-        self._fatal("All retry attempts failed.")
+        self._fatal("All retry attempts exhausted.")
 
     def _fatal(self, message: str):
         """Print an error message and exit."""
