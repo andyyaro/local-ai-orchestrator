@@ -18,6 +18,7 @@ from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
 from orchestrator.config_loader import get_active_profile, get_model_for_role
+from orchestrator.database import save_run, init_db
 
 
 DEFAULT_MAX_LOOPS = 3
@@ -60,6 +61,26 @@ def _role_model(role: str, mode: str, model_main: str | None,
     if model_main and role in {"builder", "fixer", "judge", "synthesizer"}:
         return model_main
     return get_model_for_role(role, mode)
+
+
+def _collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
+    """Load saved loop artifacts so they can be stored in SQLite."""
+    iterations_data = []
+    for i, score in enumerate(scores, start=1):
+        critique_path = run_dir / f"loop{i:02d}_critic.txt"
+        fixer_path = run_dir / f"loop{i:02d}_fixer.txt"
+        judge_path = run_dir / f"loop{i:02d}_judge.json"
+        iterations_data.append({
+            "iteration": i,
+            "critique": critique_path.read_text(encoding="utf-8")
+                        if critique_path.exists() else "",
+            "revised_draft": fixer_path.read_text(encoding="utf-8")
+                             if fixer_path.exists() else "",
+            "verdict": json.loads(judge_path.read_text(encoding="utf-8"))
+                       if judge_path.exists() else {},
+            "score": score,
+        })
+    return iterations_data
 
 
 def run_pipeline(
@@ -208,6 +229,25 @@ def run_pipeline(
     summary["passed"] = best_score >= threshold
     save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
 
+    iterations_data = _collect_iterations(run_dir, summary["scores"])
+    db_run_id = save_run(
+        goal=goal,
+        refined_goal=refined_goal,
+        mode=mode,
+        model_main=model_main or builder_model,
+        model_fast=model_fast or critic_model,
+        final_score=best_score,
+        passed=(best_score >= threshold),
+        stop_reason=stop_reason,
+        scores=summary["scores"],
+        run_dir=str(run_dir),
+        final_output=final_output,
+        iterations_data=iterations_data,
+    )
+    summary["db_run_id"] = db_run_id
+    save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
+    print(f"    → saved to database (run ID: {db_run_id})")
+
     return summary, final_output
 
 
@@ -229,6 +269,7 @@ def main():
                         help=f"Min score gain per loop before stopping. Default: {DEFAULT_MIN_IMPROVEMENT}")
     args = parser.parse_args()
 
+    init_db()
     run_dir = make_run_dir()
     active_profile = get_active_profile()
 
@@ -281,6 +322,8 @@ def main():
     if summary["scores"]:
         score_history = " → ".join(str(s) for s in summary["scores"])
         print(f"  Score history : {score_history}")
+    if summary.get("db_run_id"):
+        print(f"  Database ID   : {summary['db_run_id']}")
     print(f"  Time elapsed  : {elapsed}s")
     print(f"  Run saved to  : {run_dir}/")
     print()
