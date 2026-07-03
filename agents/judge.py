@@ -58,6 +58,7 @@ DRAFT TO SCORE (iteration {iteration}):
 {draft}
 
 Return ONLY the JSON object. No explanation, no markdown, no code fences.
+The first character must be {{ and the final character must be }}.
 """
         print(f"  [Judge] Calling {self.model} (iteration {iteration})...")
 
@@ -86,29 +87,49 @@ Return ONLY the JSON object. No explanation, no markdown, no code fences.
     def _parse_json(self, text: str) -> dict | None:
         """
         Try to extract a JSON object from the model's response.
-        Handles: clean JSON, JSON wrapped in ```json ... ```, leading/trailing text.
+        Handles clean JSON, markdown fences, leading/trailing text,
+        and the common Bootstrap-model error of omitting the final closing brace.
         """
-        # 1. Try direct parse
+        candidates = []
+
+        raw = text.strip()
+        candidates.append(raw)
+
+        # Strip markdown code fences and retry.
+        stripped = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
+        candidates.append(stripped)
+
+        # Extract the substring between the first opening brace and the last
+        # closing brace. This handles leading/trailing commentary.
+        first_open = stripped.find("{")
+        last_close = stripped.rfind("}")
+        if first_open != -1 and last_close != -1 and last_close > first_open:
+            candidates.append(stripped[first_open:last_close + 1])
+
+        # If the model started a JSON object but forgot one or more final braces,
+        # append only the number of braces needed to balance the object.
+        if first_open != -1:
+            possible = stripped[first_open:]
+            open_count = possible.count("{")
+            close_count = possible.count("}")
+            if open_count > close_count:
+                candidates.append(possible + ("}" * (open_count - close_count)))
+
+        for candidate in candidates:
+            verdict = self._try_load_json(candidate)
+            if verdict is not None:
+                return verdict
+
+        return None
+
+    def _try_load_json(self, candidate: str) -> dict | None:
+        """Return a parsed JSON dict, or None if parsing fails."""
         try:
-            return json.loads(text)
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
         except json.JSONDecodeError:
-            pass
-
-        # 2. Strip markdown code fences and retry
-        stripped = re.sub(r"```(?:json)?\s*|\s*```", "", text).strip()
-        try:
-            return json.loads(stripped)
-        except json.JSONDecodeError:
-            pass
-
-        # 3. Find the first {...} block in the text and try to parse it
-        match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
+            return None
         return None
 
     def _validate_and_fix(self, verdict: dict) -> dict:
