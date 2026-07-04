@@ -6,7 +6,7 @@ LangGraph pipeline. Every field is optional so nodes can update only
 what they produce.
 """
 
-from typing import TypedDict, Optional
+from typing import TypedDict
 
 
 class PipelineState(TypedDict, total=False):

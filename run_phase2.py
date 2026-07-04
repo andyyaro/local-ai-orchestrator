@@ -12,7 +12,6 @@ Usage:
 
 import argparse
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -126,10 +125,10 @@ def main():
     print("  RUN COMPLETE")
     print("=" * 60)
     print(f"  Run saved to : {run_dir}/")
-    print(f"  Files saved  :")
+    print("  Files saved  :")
     print(f"    01_builder_draft.txt  ({len(draft)} chars)")
     print(f"    02_critic_review.txt  ({len(critique)} chars)")
-    print(f"    metadata.json")
+    print("    metadata.json")
     print()
     print("  Next step: Review the critique in the run directory.")
     print("  If the critique is useful, proceed to Phase 3 (Fixer + Judge).")
