@@ -6,8 +6,6 @@ prompt template loading, and error handling. All agent classes inherit from
 BaseAgent and override the run() method.
 """
 
-import time
-import sys
 from pathlib import Path
 
 
@@ -36,45 +34,24 @@ class BaseAgent:
         return template_path.read_text(encoding="utf-8").strip()
 
     def call_model(self, prompt: str) -> str:
-        """Send prompt through the configured model adapter with retry."""
-        from orchestrator.adapters import get_adapter
+        """Send prompt through the configured model adapter with
+        resilience-aware failure classification, retry, and fallback
+        (see orchestrator/resilience.py). Raises FatalModelError if all
+        applicable retries/fallbacks are exhausted."""
         from orchestrator.config_loader import get_inference_defaults
+        from orchestrator.resilience import call_with_resilience
 
-        adapter = get_adapter()
         defaults = get_inference_defaults()
         temperature = getattr(self, "temperature", defaults.get("temperature", 0.7))
         num_ctx = getattr(self, "num_ctx", defaults.get("num_ctx", 4096))
 
-        for attempt in range(1, self.max_retries + 2):
-            try:
-                text = adapter.call(
-                    model=self.model,
-                    prompt=prompt,
-                    temperature=temperature,
-                    num_ctx=num_ctx,
-                )
-                if not text:
-                    raise ValueError("Adapter returned empty response.")
-                return text
-            except RuntimeError as e:
-                if attempt <= self.max_retries:
-                    print(f"  [WARN] {self.role} attempt {attempt} failed: {e}. Retrying...")
-                    time.sleep(3)
-                    continue
-                self._fatal(str(e))
-            except ValueError as e:
-                if attempt <= self.max_retries:
-                    print(f"  [WARN] {self.role} empty response, retrying...")
-                    time.sleep(2)
-                    continue
-                self._fatal(str(e))
-
-        self._fatal("All retry attempts exhausted.")
-
-    def _fatal(self, message: str):
-        """Print an error message and exit."""
-        print(f"\n[ERROR] Agent '{self.role}' failed: {message}")
-        sys.exit(1)
+        return call_with_resilience(
+            model=self.model,
+            prompt=prompt,
+            temperature=temperature,
+            num_ctx=num_ctx,
+            role=self.role,
+        )
 
     def run(self, **kwargs) -> str:
         """Override in subclasses. Returns the agent's output as a string."""

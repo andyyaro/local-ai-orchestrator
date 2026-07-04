@@ -22,6 +22,7 @@ from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
+from orchestrator.resilience import FatalModelError
 from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 
@@ -560,6 +561,10 @@ def main():
         print("\n\n[INTERRUPTED] Run stopped by user.")
         print(f"Partial output saved to: {run_dir}/")
         sys.exit(0)
+    except FatalModelError as e:
+        print(f"\n\n[MODEL FAILURE] {e}")
+        print(f"Partial output saved to: {run_dir}/")
+        sys.exit(1)
 
     elapsed = (datetime.now() - start).seconds
 

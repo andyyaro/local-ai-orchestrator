@@ -81,3 +81,16 @@ defaults:
 
 memory:
   keep_alive: "5m"
+
+resilience:
+  timeouts:
+    default: 600
+    small: 120    # e.g. llama3.2:3b class
+    medium: 300   # e.g. llama3.1:8b, gemma3:12b class
+    large: 600    # e.g. qwen2.5:14b, qwen2.5-coder:14b, phi4:14b class
+  fallback_model: "llama3.2:3b"
+  max_local_retries: 1
+  cloud_backoff:
+    base_seconds: 1
+    max_seconds: 30
+    max_retries: 4

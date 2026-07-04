@@ -22,6 +22,11 @@ from orchestrator.config_loader import (
     get_keep_alive,
     get_ollama_timeout,
 )
+from orchestrator.resilience import (
+    ModelConnectionError,
+    ModelHTTPError,
+    ModelTimeoutError,
+)
 
 
 # ── Base interface ────────────────────────────────────────────────────────────
@@ -33,8 +38,8 @@ class ModelAdapter(ABC):
     """
 
     @abstractmethod
-    def call(self, model: str, prompt: str,
-             temperature: float = 0.7, num_ctx: int = 4096) -> str:
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             num_ctx: int = 4096, timeout: int | None = None) -> str:
         """
         Send a prompt to the model and return the response text.
 
@@ -43,6 +48,7 @@ class ModelAdapter(ABC):
             prompt:      The full prompt string.
             temperature: Sampling temperature.
             num_ctx:     Context window size in tokens.
+            timeout:     Optional per-call timeout override in seconds.
 
         Returns:
             The model's response as a plain string.
@@ -62,8 +68,8 @@ class OllamaAdapter(ModelAdapter):
         self.keep_alive = get_keep_alive()
         self.request_timeout = get_ollama_timeout()
 
-    def call(self, model: str, prompt: str,
-             temperature: float = 0.7, num_ctx: int = 4096) -> str:
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             num_ctx: int = 4096, timeout: int | None = None) -> str:
         payload = {
             "model": model,
             "prompt": prompt,
@@ -74,26 +80,27 @@ class OllamaAdapter(ModelAdapter):
                 "num_ctx": num_ctx,
             },
         }
+        effective_timeout = timeout if timeout is not None else self.request_timeout
         try:
             resp = requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=self.request_timeout,
+                timeout=effective_timeout,
             )
             resp.raise_for_status()
             return resp.json().get("response", "").strip()
         except requests.exceptions.ConnectionError:
-            raise RuntimeError(
+            raise ModelConnectionError(
                 f"Cannot connect to Ollama at {self.base_url}. "
                 "Is the Ollama app running? Run: open -a Ollama"
             )
         except requests.exceptions.Timeout:
-            raise RuntimeError(
-                f"Ollama timed out after {self.request_timeout}s on model '{model}'. "
+            raise ModelTimeoutError(
+                f"Ollama timed out after {effective_timeout}s on model '{model}'. "
                 "Try a smaller model or check memory pressure."
             )
         except requests.exceptions.HTTPError as e:
-            raise RuntimeError(f"Ollama HTTP error: {e} -- {resp.text[:300]}")
+            raise ModelHTTPError(f"Ollama HTTP error: {e} -- {resp.text[:300]}")
 
 
 # ── Future adapter stubs ──────────────────────────────────────────────────────
@@ -108,8 +115,8 @@ class OpenAIAdapter(ModelAdapter):
     To activate: set provider: openai in config/models.yaml
     """
 
-    def call(self, model: str, prompt: str,
-             temperature: float = 0.7, num_ctx: int = 4096) -> str:
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             num_ctx: int = 4096, timeout: int | None = None) -> str:
         raise NotImplementedError(
             "OpenAI adapter is not yet implemented. "
             "Set provider: ollama in config/models.yaml to use local models. "
@@ -126,8 +133,8 @@ class AnthropicAdapter(ModelAdapter):
     To activate: set provider: anthropic in config/models.yaml
     """
 
-    def call(self, model: str, prompt: str,
-             temperature: float = 0.7, num_ctx: int = 4096) -> str:
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             num_ctx: int = 4096, timeout: int | None = None) -> str:
         raise NotImplementedError(
             "Anthropic adapter is not yet implemented. "
             "Set provider: ollama in config/models.yaml to use local models."

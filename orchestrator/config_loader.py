@@ -119,6 +119,13 @@ def get_path_settings(path_name: str) -> dict:
     return paths[path_name]
 
 
+def get_resilience_config() -> dict:
+    """Return the resilience section (timeouts, fallback_model,
+    max_local_retries, cloud_backoff) from config/models.yaml."""
+    cfg = load_models_config()
+    return cfg.get("resilience", {})
+
+
 def reload_config():
     """Force reload of cached configs after editing YAML files."""
     global _models_cache, _modes_cache
