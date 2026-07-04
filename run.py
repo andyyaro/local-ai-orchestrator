@@ -22,6 +22,7 @@ from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
+from orchestrator.metrics import RunMetrics
 from orchestrator.resilience import FatalModelError
 from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import run_validators, apply_validator_results_to_verdict
@@ -89,18 +90,16 @@ def _collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
     return iterations_data
 
 
-def _log_agent_call(log, agent_name: str, model: str, call_fn,
-                    iteration: int = 0):
+def _log_agent_call(log, metrics: RunMetrics, agent_name: str, model: str,
+                    call_fn, iteration: int = 0):
     """Run one agent call with Section 19 structured start/end/error logging."""
     t0 = time.time()
     log.agent_start(agent_name, model, iteration=iteration)
     try:
         result = call_fn()
-        log.agent_end(
-            agent_name,
-            chars=len(str(result)),
-            elapsed_ms=int((time.time() - t0) * 1000),
-        )
+        elapsed_ms = int((time.time() - t0) * 1000)
+        log.agent_end(agent_name, chars=len(str(result)), elapsed_ms=elapsed_ms)
+        metrics.record_agent_call(agent_name, model, elapsed_ms)
         return result
     except Exception as exc:
         log.error(agent_name, str(exc))
@@ -157,6 +156,8 @@ def run_pipeline(
     path_override: str | None = None,
 ) -> tuple[dict, str]:
     log = get_logger(run_dir.name)
+    metrics = RunMetrics(run_dir.name)
+    pipeline_start = time.time()
 
     summary = {
         "goal": goal,
@@ -178,6 +179,7 @@ def run_pipeline(
     supervisor = SupervisorAgent(model=supervisor_model)
     sup_result = _log_agent_call(
         log,
+        metrics,
         "supervisor",
         supervisor_model,
         lambda: supervisor.run(goal=goal),
@@ -197,6 +199,7 @@ def run_pipeline(
     summary["max_loops"] = effective_max_loops
     summary["threshold"] = effective_threshold
     log.path_selected(path)
+    metrics.record_path(path)
     print(f"    Path         : {path}")
 
     log.run_start(
@@ -219,6 +222,7 @@ def run_pipeline(
         planner = PlannerAgent(model=planner_model)
         plan = _log_agent_call(
             log,
+            metrics,
             "planner",
             planner_model,
             lambda: planner.run(goal=refined_goal, mode=mode),
@@ -232,6 +236,7 @@ def run_pipeline(
     builder = BuilderAgent(model=builder_model)
     draft = _log_agent_call(
         log,
+        metrics,
         "builder",
         builder_model,
         lambda: builder.run(goal=refined_goal, plan=plan, mode=mode),
@@ -285,6 +290,7 @@ def run_pipeline(
 
         verdict = _log_agent_call(
             log,
+            metrics,
             "judge",
             judge_model,
             lambda: judge.run(
@@ -299,6 +305,11 @@ def run_pipeline(
             verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
         verdict = apply_validator_results_to_verdict(verdict, validator_results)
         save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
+        for result in validator_results:
+            if not result.passed:
+                metrics.record_validator_failure(result.rule)
+        for reason in verdict.get("hard_fails", []):
+            metrics.record_hard_fail(reason)
 
         score = int(verdict["total_score"])
         summary["scores"].append(score)
@@ -340,6 +351,7 @@ def run_pipeline(
             print(f"  [Critic] Reviewing draft (iteration {iteration})...")
             critique = _log_agent_call(
                 log,
+                metrics,
                 "critic",
                 critic_model,
                 lambda: critic.run(goal=refined_goal, draft=draft),
@@ -355,6 +367,7 @@ def run_pipeline(
 
             revised = _log_agent_call(
                 log,
+                metrics,
                 "fixer",
                 fixer_model,
                 lambda: fixer.run(
@@ -398,6 +411,7 @@ def run_pipeline(
 
             verdict = _log_agent_call(
                 log,
+                metrics,
                 "judge",
                 judge_model,
                 lambda: judge.run(
@@ -412,6 +426,11 @@ def run_pipeline(
                 verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
             verdict = apply_validator_results_to_verdict(verdict, validator_results)
             save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
+            for result in validator_results:
+                if not result.passed:
+                    metrics.record_validator_failure(result.rule)
+            for reason in verdict.get("hard_fails", []):
+                metrics.record_hard_fail(reason)
 
             score = int(verdict["total_score"])
             summary["scores"].append(score)
@@ -461,6 +480,7 @@ def run_pipeline(
     synthesizer = SynthesizerAgent(model=synthesizer_model)
     final_output = _log_agent_call(
         log,
+        metrics,
         "synthesizer",
         synthesizer_model,
         lambda: synthesizer.run(
@@ -475,6 +495,8 @@ def run_pipeline(
     summary["stop_reason"] = stop_reason
     summary["final_score"] = best_score
     summary["passed"] = best_score >= effective_threshold
+    total_elapsed_ms = int((time.time() - pipeline_start) * 1000)
+    summary["metrics"] = metrics.finalize(total_elapsed_ms)
     save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
 
     log.stop(
