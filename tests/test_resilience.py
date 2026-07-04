@@ -165,3 +165,82 @@ def test_call_with_resilience_succeeds_on_first_try(monkeypatch):
 
     assert result == "all good"
     assert fake.calls == ["qwen2.5:14b"]
+
+
+# ── metrics wiring ─────────────────────────────────────────────────────────────
+#
+# These use the real RunMetrics collector (not a fake) so the assertions prove
+# the counters that agents/base_agent.py and run.py rely on for
+# run_summary.json actually increment when resilience events fire.
+
+def test_call_with_resilience_records_retry_on_connection_error(monkeypatch):
+    from orchestrator.metrics import RunMetrics
+
+    _patch_resilience_config(monkeypatch)
+    fake = FakeAdapter([ModelConnectionError("dropped"), "success text"])
+    _patch_adapter(monkeypatch, fake)
+    metrics = RunMetrics("run-1")
+
+    result = call_with_resilience(
+        model="qwen2.5:14b", prompt="hi", temperature=0.7, num_ctx=4096,
+        role="builder", metrics=metrics,
+    )
+
+    assert result == "success text"
+    summary = metrics.finalize(total_elapsed_ms=0)
+    assert summary["retries"] == 1
+    assert summary["fallbacks"] == 0
+    assert summary["timeout_events"] == 0
+
+
+def test_call_with_resilience_records_timeout_and_fallback_events(monkeypatch):
+    from orchestrator.metrics import RunMetrics
+
+    _patch_resilience_config(monkeypatch)
+    fake = FakeAdapter([ModelTimeoutError("too slow"), "fallback text"])
+    _patch_adapter(monkeypatch, fake)
+    metrics = RunMetrics("run-1")
+
+    result = call_with_resilience(
+        model="qwen2.5:14b", prompt="hi", temperature=0.7, num_ctx=4096,
+        role="builder", metrics=metrics,
+    )
+
+    assert result == "fallback text"
+    summary = metrics.finalize(total_elapsed_ms=0)
+    assert summary["retries"] == 0
+    assert summary["fallbacks"] == 1
+    assert summary["timeout_events"] == 1
+
+
+def test_call_with_resilience_records_timeout_event_even_when_fallback_also_fails(monkeypatch):
+    from orchestrator.metrics import RunMetrics
+
+    _patch_resilience_config(monkeypatch)
+    fake = FakeAdapter([ModelTimeoutError("too slow"), ModelTimeoutError("still slow")])
+    _patch_adapter(monkeypatch, fake)
+    metrics = RunMetrics("run-1")
+
+    try:
+        call_with_resilience(
+            model="qwen2.5:14b", prompt="hi", temperature=0.7, num_ctx=4096,
+            role="builder", metrics=metrics,
+        )
+    except FatalModelError:
+        pass
+
+    summary = metrics.finalize(total_elapsed_ms=0)
+    assert summary["timeout_events"] == 1
+    assert summary["fallbacks"] == 1
+
+
+def test_call_with_resilience_does_not_record_anything_when_metrics_is_none(monkeypatch):
+    _patch_resilience_config(monkeypatch)
+    fake = FakeAdapter([ModelConnectionError("dropped"), "success text"])
+    _patch_adapter(monkeypatch, fake)
+
+    result = call_with_resilience(
+        model="qwen2.5:14b", prompt="hi", temperature=0.7, num_ctx=4096, role="builder",
+    )
+
+    assert result == "success text"

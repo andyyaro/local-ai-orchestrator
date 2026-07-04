@@ -176,7 +176,7 @@ def run_pipeline(
     header("STEP 1", "SUPERVISOR — Refine goal & choose mode")
     supervisor_model = _role_model("supervisor", "general", model_main, model_fast)
     summary["role_models"]["supervisor"] = supervisor_model
-    supervisor = SupervisorAgent(model=supervisor_model)
+    supervisor = SupervisorAgent(model=supervisor_model, metrics=metrics)
     sup_result = _log_agent_call(
         log,
         metrics,
@@ -219,7 +219,7 @@ def run_pipeline(
         header("STEP 2", "PLANNER — Create execution plan")
         planner_model = _role_model("planner", mode, model_main, model_fast)
         summary["role_models"]["planner"] = planner_model
-        planner = PlannerAgent(model=planner_model)
+        planner = PlannerAgent(model=planner_model, metrics=metrics)
         plan = _log_agent_call(
             log,
             metrics,
@@ -233,7 +233,7 @@ def run_pipeline(
     header("STEP 3", "BUILDER — Write first draft")
     builder_model = _role_model("builder", mode, model_main, model_fast)
     summary["role_models"]["builder"] = builder_model
-    builder = BuilderAgent(model=builder_model)
+    builder = BuilderAgent(model=builder_model, metrics=metrics)
     draft = _log_agent_call(
         log,
         metrics,
@@ -252,7 +252,7 @@ def run_pipeline(
 
     judge_model = _role_model("judge", mode, model_main, model_fast)
     summary["role_models"]["judge"] = judge_model
-    judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold)
+    judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold, metrics=metrics)
 
     if path_config["skip_critic_fixer_loop"]:
         iteration = 1
@@ -341,8 +341,8 @@ def run_pipeline(
             "fixer": fixer_model,
         })
 
-        critic = CriticAgent(model=critic_model)
-        fixer = FixerAgent(model=fixer_model)
+        critic = CriticAgent(model=critic_model, metrics=metrics)
+        fixer = FixerAgent(model=fixer_model, metrics=metrics)
 
         for iteration in range(1, effective_max_loops + 1):
             summary["iterations_run"] = iteration
@@ -477,7 +477,7 @@ def run_pipeline(
     header("FINAL", "SYNTHESIZER — Polish best draft")
     synthesizer_model = _role_model("synthesizer", mode, model_main, model_fast)
     summary["role_models"]["synthesizer"] = synthesizer_model
-    synthesizer = SynthesizerAgent(model=synthesizer_model)
+    synthesizer = SynthesizerAgent(model=synthesizer_model, metrics=metrics)
     final_output = _log_agent_call(
         log,
         metrics,

@@ -16,12 +16,13 @@ class BaseAgent:
     """Shared foundation for all pipeline agents."""
 
     def __init__(self, model: str, role: str, temperature: float = 0.7,
-                 num_ctx: int = 4096, max_retries: int = 2):
+                 num_ctx: int = 4096, max_retries: int = 2, metrics=None):
         self.model = model
         self.role = role
         self.temperature = temperature
         self.num_ctx = num_ctx
         self.max_retries = max_retries
+        self.metrics = metrics
 
     def load_prompt_template(self) -> str:
         """Load the prompt template for this agent from prompts/<role>.txt."""
@@ -51,6 +52,7 @@ class BaseAgent:
             temperature=temperature,
             num_ctx=num_ctx,
             role=self.role,
+            metrics=self.metrics,
         )
 
     def run(self, **kwargs) -> str:
