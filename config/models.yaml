@@ -10,9 +10,14 @@ ollama:
   keep_alive: "5m"
   request_timeout: 600
 
-# Options: bootstrap | serious | coding | fast
+# Options: bootstrap | serious | coding | fast | low_memory
 active_profile: serious
 
+# See docs/model-profiles.md for the memory-budget rationale behind these
+# assignments. Every profile below must reference at most one distinct
+# 14B-class model family (tests/test_model_config.py enforces this) — a
+# 24GB MacBook cannot keep two 14B-class models resident at once, so mixing
+# them within a profile causes Ollama to repeatedly swap models to disk.
 profiles:
   bootstrap:
     supervisor: "llama3.2:3b"
@@ -27,19 +32,19 @@ profiles:
     supervisor: "llama3.1:8b"
     planner: "llama3.1:8b"
     builder: "qwen2.5:14b"
-    critic: "gemma3:12b"
+    critic: "llama3.1:8b"
     fixer: "qwen2.5:14b"
-    judge: "phi4:14b"
+    judge: "qwen2.5:14b"
     synthesizer: "qwen2.5:14b"
 
   coding:
     supervisor: "llama3.1:8b"
     planner: "llama3.1:8b"
     builder: "qwen2.5-coder:14b"
-    critic: "gemma3:12b"
+    critic: "llama3.1:8b"
     fixer: "qwen2.5-coder:14b"
-    judge: "phi4:14b"
-    synthesizer: "qwen2.5:14b"
+    judge: "qwen2.5-coder:14b"
+    synthesizer: "llama3.1:8b"
 
   fast:
     supervisor: "llama3.2:3b"
@@ -50,6 +55,21 @@ profiles:
     judge: "llama3.1:8b"
     synthesizer: "llama3.1:8b"
 
+  low_memory:
+    supervisor: "llama3.2:3b"
+    planner: "llama3.2:3b"
+    builder: "llama3.1:8b"
+    critic: "llama3.2:3b"
+    fixer: "llama3.1:8b"
+    judge: "llama3.2:3b"
+    synthesizer: "llama3.1:8b"
+
+# Known limitation (see docs/model-profiles.md): these overrides apply
+# regardless of active_profile. If active_profile is "serious" and a goal
+# is classified mode="coding", builder/fixer switch to qwen2.5-coder:14b
+# while judge/synthesizer stay on serious's qwen2.5:14b — reintroducing two
+# resident 14B-class families for that run. Fixing this fully would mean
+# threading mode into profile selection, which is out of this phase's scope.
 mode_overrides:
   coding:
     builder: "qwen2.5-coder:14b"
@@ -78,6 +98,18 @@ paths:
 defaults:
   temperature: 0.7
   num_ctx: 4096
+
+# Per-profile context window override, read via
+# orchestrator.config_loader.get_num_ctx_for_profile(). Falls back to
+# defaults.num_ctx above for any profile not listed here. Larger num_ctx
+# multiplies KV cache memory use, so low_memory intentionally uses a much
+# smaller window than serious/coding.
+context_sizes:
+  bootstrap: 4096
+  fast: 4096
+  serious: 8192
+  coding: 8192
+  low_memory: 2048
 
 memory:
   keep_alive: "5m"
