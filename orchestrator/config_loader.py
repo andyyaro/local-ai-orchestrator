@@ -99,6 +99,18 @@ def get_inference_defaults() -> dict:
     return cfg.get("defaults", {"temperature": 0.7, "num_ctx": 4096})
 
 
+def get_num_ctx_for_profile(profile_name: str | None = None) -> int:
+    """Return the context window size for a profile from
+    config/models.yaml's context_sizes block, falling back to
+    defaults.num_ctx if the profile has no explicit entry."""
+    cfg = load_models_config()
+    profile = profile_name or get_active_profile()
+    context_sizes = cfg.get("context_sizes", {})
+    if profile in context_sizes:
+        return int(context_sizes[profile])
+    return int(get_inference_defaults().get("num_ctx", 4096))
+
+
 def get_keep_alive() -> str:
     cfg = load_models_config()
     memory_keep_alive = cfg.get("memory", {}).get("keep_alive")
