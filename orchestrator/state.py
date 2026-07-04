@@ -13,6 +13,7 @@ class PipelineState(TypedDict, total=False):
     # Input
     goal: str                    # user raw goal
     refined_goal: str            # supervisor-cleaned goal
+    augmented_goal: str          # refined_goal + Phase 9 retrieved context, when enabled
     mode: str                    # writing | coding | planning | debugging | study | general
 
     # Routing (Phase 3)
