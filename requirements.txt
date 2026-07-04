@@ -2,6 +2,12 @@
 requests>=2.31.0
 pyyaml>=6.0.1
 
+# Phase 9 — local vector similarity extension for retrieval memory.
+# Optional at runtime: memory/retriever.py falls back to a pure-Python
+# brute-force cosine similarity scan if this extension fails to load on a
+# given machine (see that module's _try_sqlite_vec_similarity()).
+sqlite-vec>=0.1.0
+
 # LangGraph and LangChain Ollama integration
 langgraph>=0.2.0
 langchain-ollama>=0.1.0

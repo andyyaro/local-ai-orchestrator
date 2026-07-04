@@ -61,9 +61,36 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
     approved_by_user INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS memory_chunks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type TEXT    NOT NULL,   -- 'run' or 'project_file'
+    source_ref  TEXT    NOT NULL,   -- run_id or file path
+    chunk_text  TEXT    NOT NULL,
+    embedding   BLOB,
+    created_at  TEXT    NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_chunks_fts
+USING fts5(chunk_text, content='memory_chunks', content_rowid='id');
+
+-- memory_chunks_fts is an external-content FTS5 table, so it must be kept
+-- in sync with memory_chunks explicitly via triggers -- FTS5 does not
+-- follow the content table's rowid automatically.
+CREATE TRIGGER IF NOT EXISTS memory_chunks_ai AFTER INSERT ON memory_chunks BEGIN
+    INSERT INTO memory_chunks_fts(rowid, chunk_text) VALUES (new.id, new.chunk_text);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_chunks_ad AFTER DELETE ON memory_chunks BEGIN
+    INSERT INTO memory_chunks_fts(memory_chunks_fts, rowid, chunk_text) VALUES('delete', old.id, old.chunk_text);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_chunks_au AFTER UPDATE ON memory_chunks BEGIN
+    INSERT INTO memory_chunks_fts(memory_chunks_fts, rowid, chunk_text) VALUES('delete', old.id, old.chunk_text);
+    INSERT INTO memory_chunks_fts(rowid, chunk_text) VALUES (new.id, new.chunk_text);
+END;
+
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_iterations_run_id ON iterations(run_id);
 CREATE INDEX IF NOT EXISTS idx_cloud_calls_timestamp ON cloud_calls(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_source ON memory_chunks(source_type, source_ref);
 """
 
 
@@ -360,3 +387,75 @@ def get_cloud_spend(period: str) -> float:
     ).fetchone()
     conn.close()
     return float(row[0])
+
+
+# ── Retrieval memory (Phase 9) ────────────────────────────────────────────────
+
+def save_memory_chunk(
+    source_type: str, source_ref: str, chunk_text: str, embedding: Optional[bytes]
+) -> int:
+    """
+    Insert one indexed chunk into memory_chunks. The memory_chunks_ai
+    trigger keeps memory_chunks_fts in sync automatically -- callers never
+    need to touch the FTS table directly.
+    """
+    init_db()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO memory_chunks (source_type, source_ref, chunk_text, embedding, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (source_type, source_ref, chunk_text, embedding,
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    chunk_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return chunk_id
+
+
+def get_all_memory_chunks() -> list[dict]:
+    """
+    Return every indexed chunk (id, source_type, source_ref, chunk_text,
+    embedding). Used by memory/retriever.py's vector_search() -- at this
+    project's actual scale (one person's run history and project files,
+    thousands not millions of chunks) loading them all for a brute-force
+    scan is fast enough to be a legitimate design choice, not a shortcut.
+    """
+    init_db()
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, source_type, source_ref, chunk_text, embedding FROM memory_chunks"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def keyword_search_memory_chunks(query: str, k: int) -> list[dict]:
+    """
+    BM25-ranked keyword search via the memory_chunks_fts virtual table.
+    Returns an empty list (rather than raising) on an FTS5 MATCH syntax
+    error, e.g. a query containing bare special characters -- a keyword
+    search failing should degrade hybrid_search's result, not crash it.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT mc.id, mc.source_type, mc.source_ref, mc.chunk_text,
+                   bm25(memory_chunks_fts) AS rank
+            FROM memory_chunks_fts
+            JOIN memory_chunks mc ON mc.id = memory_chunks_fts.rowid
+            WHERE memory_chunks_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (query, k),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    conn.close()
+    return [dict(row) for row in rows]

@@ -162,6 +162,14 @@ def get_keep_alive() -> str:
     return memory_keep_alive or ollama_keep_alive or "5m"
 
 
+def get_memory_config() -> dict:
+    """Return the memory section (keep_alive, and Phase 9's
+    retrieval_enabled/embedding_model/top_k/chunk_size_tokens) from
+    config/models.yaml."""
+    cfg = load_models_config()
+    return cfg.get("memory", {})
+
+
 def get_path_settings(path_name: str) -> dict:
     """Return the routing settings (skip_planner, skip_critic_fixer_loop,
     max_loops, threshold) for a given path name (fast | normal | deep)."""
