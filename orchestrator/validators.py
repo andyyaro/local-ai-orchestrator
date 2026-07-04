@@ -287,3 +287,32 @@ def apply_validator_results_to_verdict(verdict: dict, validator_results: list[Va
     verdict["validator_failures"] = [r.rule for r in failed]
     print(f"  [Validators] Hard fail: constraint_violation overrides Judge score ({detail})")
     return verdict
+
+
+def should_break_on_hard_fail(mode: str, verdict: dict, iteration: int, max_loops: int) -> bool:
+    """
+    Existing hard failures stop the loop. In coding mode, broken_code is allowed
+    to continue until max loops so the next Fixer pass can use execution feedback.
+
+    A validator-detected constraint_violation (word limits, missing code
+    blocks, etc.) gets the same iterative-repair treatment, in any mode, as
+    long as it's the ONLY hard fail this iteration -- the deterministic
+    validator feedback is threaded into the next critique so the Fixer has
+    something concrete to act on. If some other, unknown hard fail is
+    present alongside it (e.g. a Judge-reported reason with no known repair
+    path), or repair attempts run out, this still stops the loop -- a
+    constraint violation can delay failure for a repair attempt, but it can
+    never be silently dropped.
+
+    Shared by both run.py and orchestrator/graph.py so the two pipelines
+    apply identical repair-vs-stop decisions rather than each maintaining a
+    separate copy of this logic.
+    """
+    hard_fails = verdict.get("hard_fails") or []
+    if not hard_fails:
+        return False
+    if mode == "coding" and "broken_code" in hard_fails and iteration < max_loops:
+        return False
+    if set(hard_fails) == {"constraint_violation"} and iteration < max_loops:
+        return False
+    return True

@@ -314,3 +314,165 @@ def test_pipeline_reverts_final_output_when_synthesizer_violates_constraint(tmp_
     assert summary["metrics"]["hard_fails"].get("synthesizer_constraint_violation") == 1
     # The loop itself still succeeded -- only the Synthesizer's output was rejected.
     assert summary["passed"] is True
+
+
+# ── Phase 6c: fast-path constraint-violation repair loop ───────────────────────
+
+def test_fast_path_repairs_constraint_violation_via_critic_fixer(tmp_path, monkeypatch):
+    """
+    The core Phase 6c behavior: a fast-path run whose first (no-critic/fixer)
+    pass violates a word-count constraint must not fail immediately when
+    iterations remain -- it should fall back to a Critic/Fixer repair pass,
+    and pass if that repair actually satisfies the constraint.
+    """
+    fixer_calls = []
+
+    def _fixer_repairs(self, goal, draft, critique, iteration=1, mode="general"):
+        fixer_calls.append(iteration)
+        assert "DETERMINISTIC CONSTRAINT FEEDBACK" in critique
+        return " ".join(["word"] * 50)
+
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": "Explain why sleep matters in exactly 50 words.",
+            "mode": "writing",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": " ".join(["word"] * 300),
+    )
+    monkeypatch.setattr(
+        CriticAgent, "run",
+        lambda self, goal, draft: "Cut this down to meet the 50-word limit.",
+    )
+    monkeypatch.setattr(FixerAgent, "run", _fixer_repairs)
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: best_draft,
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="Write a summary of why sleep matters in exactly 50 words.",
+        model_main=None,
+        model_fast=None,
+        max_loops=3,
+        threshold=50,
+        min_improvement=5,
+        run_dir=run_dir,
+        path_override="fast",
+    )
+
+    assert fixer_calls == [2]
+    assert summary["passed"] is True
+    assert summary["final_score"] == 100
+    assert summary["iterations_run"] == 2
+    assert final_output == " ".join(["word"] * 50)
+    assert summary["metrics"]["hard_fails"].get("constraint_violation") == 1
+
+
+def test_fast_path_repair_fails_clearly_when_still_violating_after_max_loops(tmp_path, monkeypatch):
+    """
+    If the Critic/Fixer repair attempts never actually satisfy the
+    constraint, the run must still fail clearly once allowed loops are
+    exhausted -- repair delays failure, it never hides it.
+    """
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": "Explain why sleep matters in exactly 50 words.",
+            "mode": "writing",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": " ".join(["word"] * 300),
+    )
+    monkeypatch.setattr(
+        CriticAgent, "run",
+        lambda self, goal, draft: "Cut this down to meet the 50-word limit.",
+    )
+    monkeypatch.setattr(
+        FixerAgent, "run",
+        lambda self, goal, draft, critique, iteration=1, mode="general": " ".join(["word"] * 300),
+    )
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: best_draft,
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="Write a summary of why sleep matters in exactly 50 words.",
+        model_main=None,
+        model_fast=None,
+        max_loops=3,
+        threshold=50,
+        min_improvement=5,
+        run_dir=run_dir,
+        path_override="fast",
+    )
+
+    assert summary["passed"] is False
+    assert summary["final_score"] == 0
+    assert "constraint_violation" in summary["stop_reason"]
+    assert summary["iterations_run"] == 3
+    assert summary["metrics"]["hard_fails"].get("constraint_violation") == 3
+
+
+def test_fast_path_does_not_repair_when_max_loops_leaves_no_room(tmp_path, monkeypatch):
+    """
+    Regression guard: with the fast path's default max_loops=1 (no explicit
+    override), a repairable constraint violation still has no room to
+    repair and must fail on the first pass, exactly as before this phase --
+    Critic/Fixer must never be invoked in that case.
+    """
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": "Explain why sleep matters in exactly 50 words.",
+            "mode": "writing",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": " ".join(["word"] * 300),
+    )
+    monkeypatch.setattr(CriticAgent, "run", _fail_if_called)
+    monkeypatch.setattr(FixerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: best_draft,
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="Write a summary of why sleep matters in exactly 50 words.",
+        model_main=None,
+        model_fast=None,
+        max_loops=1,
+        threshold=50,
+        min_improvement=5,
+        run_dir=run_dir,
+        path_override="fast",
+    )
+
+    assert summary["passed"] is False
+    assert summary["iterations_run"] == 1

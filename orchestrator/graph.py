@@ -13,7 +13,11 @@ from langgraph.graph import StateGraph, END
 from orchestrator.state import PipelineState
 from orchestrator.config_loader import get_model_for_role, get_num_ctx_for_profile
 from orchestrator.router import classify_path, get_path_config
-from orchestrator.validators import run_validators, apply_validator_results_to_verdict
+from orchestrator.validators import (
+    run_validators,
+    apply_validator_results_to_verdict,
+    should_break_on_hard_fail,
+)
 from agents.supervisor import SupervisorAgent
 from agents.planner import PlannerAgent
 from agents.builder import BuilderAgent
@@ -102,6 +106,17 @@ def node_critic(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
     agent = CriticAgent(model=_role_model(state, "critic"), num_ctx=_num_ctx())
     critique = agent.run(goal=state["refined_goal"], draft=state["draft"])
+
+    previous_validator_feedback = state.get("previous_validator_feedback", "")
+    if previous_validator_feedback:
+        critique += (
+            "\n\nDETERMINISTIC CONSTRAINT FEEDBACK FROM PREVIOUS REVISION:\n"
+            f"{previous_validator_feedback}\n"
+            "The next revision MUST satisfy this constraint exactly (for "
+            "example, hitting a required word count), even if it means "
+            "shortening or restructuring the draft."
+        )
+
     _save(state["run_dir"], f"loop{iteration:02d}_critic.txt", critique)
     return {"critique": critique}
 
@@ -166,20 +181,30 @@ def node_judge(state: PipelineState) -> dict:
     should_continue = True
     stop_reason = ""
 
-    if skip_critic_fixer_loop:
-        should_continue = False
-        stop_reason = (
-            f"passed (score {score} >= threshold {threshold})"
-            if verdict["pass"]
-            else f"fast path single iteration complete (score {score})"
-        )
-    elif verdict["pass"]:
+    # The fast path's single no-critic/fixer pass is only "fast" on the
+    # very first judge call (iteration 1). If that pass hard-fails on a
+    # repairable constraint_violation, this behaves like the normal path
+    # from here on -- falling back into the same critic/fixer/judge cycle
+    # for the remaining iterations instead of failing immediately, since
+    # the fast path skipping Critic/Fixer shouldn't mean skipping repair.
+    fast_first_pass = skip_critic_fixer_loop and iteration == 1
+
+    if verdict["pass"]:
         should_continue = False
         stop_reason = f"passed (score {score} >= threshold {threshold})"
+    elif fast_first_pass and should_break_on_hard_fail(mode, verdict, iteration, max_loops):
+        should_continue = False
+        stop_reason = (
+            f"hard_fail: {verdict['hard_fails']}" if verdict.get("hard_fails")
+            else f"fast path single iteration complete (score {score})"
+        )
+    elif fast_first_pass:
+        should_continue = True
+        stop_reason = ""
     elif iteration >= max_loops:
         should_continue = False
         stop_reason = f"max_loops ({max_loops}) reached"
-    elif verdict.get("hard_fails"):
+    elif verdict.get("hard_fails") and should_break_on_hard_fail(mode, verdict, iteration, max_loops):
         should_continue = False
         stop_reason = f"hard_fail: {verdict['hard_fails']}"
     elif iteration > 1:
@@ -191,12 +216,16 @@ def node_judge(state: PipelineState) -> dict:
                 f"min_improvement {min_improvement})"
             )
 
+    failed_validators = [r for r in validator_results if not r.passed]
+    validator_feedback = "; ".join(r.detail for r in failed_validators)
+
     return {
         "verdict": verdict,
         "scores": scores,
         "best_score": best_score,
         "best_draft": best_draft,
         "previous_score": score,
+        "previous_validator_feedback": validator_feedback,
         "draft": revised,
         "iteration": iteration + 1,
         "should_continue": should_continue,
@@ -261,8 +290,10 @@ def route_after_builder(state: PipelineState) -> Literal["critic", "judge"]:
 
 
 def route_after_judge(state: PipelineState) -> Literal["critic", "synthesizer"]:
-    if state.get("skip_critic_fixer_loop", False):
-        return "synthesizer"
+    # skip_critic_fixer_loop no longer forces "synthesizer" unconditionally:
+    # node_judge sets should_continue=True on the fast path's first pass
+    # when it hard-fails on a repairable constraint_violation, so this must
+    # still be able to route into critic/fixer for the repair attempt.
     if state.get("should_continue", False):
         return "critic"
     return "synthesizer"
