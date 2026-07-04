@@ -84,35 +84,40 @@ first place; falling back to the same light 8B model already used for
 supervisor/planner/critic keeps exactly one 14B-class family resident in
 the `coding` profile, consistent with every other profile in this file.
 
-## Known limitation: `mode_overrides` can still mix families
+## `mode_overrides` and `active_profile` no longer mix families
 
-`config/models.yaml`'s `mode_overrides` block switches `builder`/`fixer`
-to `qwen2.5-coder:14b` whenever the Supervisor classifies a goal's mode as
-`coding` or `debugging` — **regardless of the active profile.** If
-`active_profile: serious` and a goal gets classified as `coding`, that run
-will use `qwen2.5-coder:14b` for builder/fixer while judge and synthesizer
-stay on `serious`'s `qwen2.5:14b` — two resident 14B-class families for
-that one run, even though the `serious` profile passes
-`test_model_config.py` in isolation.
+**Fixed in Phase 6b.** `config/models.yaml`'s `mode_overrides` block
+switches `builder`/`fixer` to `qwen2.5-coder:14b` whenever the Supervisor
+classifies a goal's mode as `coding` or `debugging` — regardless of the
+active profile. Previously, if `active_profile: serious` and a goal got
+classified as `coding`, that run would use `qwen2.5-coder:14b` for
+builder/fixer while judge and synthesizer stayed on `serious`'s
+`qwen2.5:14b` — two resident 14B-class families for that one run, even
+though the `serious` profile passes `test_model_config.py`'s per-profile
+checks in isolation.
 
-This is a pre-existing characteristic of how `mode_overrides` interacts
-with profile selection (`orchestrator/config_loader.get_model_for_role()`
-checks `mode_overrides` before falling back to the profile), not something
-introduced by this phase. Fixing it fully would mean making profile
-selection mode-aware, which is a larger design change than "keep each
-profile's own model list internally consistent." Tracked here as a known
-follow-up rather than silently patched, since it wasn't in Phase 6's
-explicit scope. If you hit this in practice (a `coding`-classified goal
-under `active_profile: serious`), switch to the `coding` profile directly
-for that run, or override roles manually via `--model-main`.
+`orchestrator.config_loader.get_effective_role_models(mode,
+profile_name=None)` now computes the full role→model mapping for a
+profile+mode combination and, if the merge of profile defaults +
+`mode_overrides` would introduce a second distinct 14B-class model name,
+brings every 14B-class role in line with the override's model instead
+(trusting the override as the more task-relevant choice — e.g. the coder
+model for a coding-classified goal). `get_model_for_role()` now delegates
+to this function, so the fix applies everywhere a role's model is resolved.
+See `tests/test_model_config.py`'s `test_effective_role_models_*` tests for
+the exact behavior across `serious`/`low_memory` × `coding`/`debugging`.
 
 ## `num_ctx` per profile
 
 `orchestrator.config_loader.get_num_ctx_for_profile(profile_name=None)`
 reads `config/models.yaml`'s `context_sizes` block for the given profile
 (defaulting to the active profile), falling back to `defaults.num_ctx` for
-any profile not listed there. Use it instead of hardcoding `4096`
-anywhere new context-size logic is added.
+any profile not listed there. **Wired into the runtime call path in Phase
+6b:** `run.py`'s `run_pipeline()` computes this once per run and passes it
+as `num_ctx` to every agent constructor, and `orchestrator/graph.py`'s
+`_num_ctx()` helper does the same for each LangGraph node — so KV cache
+footprint actually scales with the active profile's budget rather than
+every agent using a single hardcoded `4096` regardless of profile.
 
 ## Manual smoke test
 

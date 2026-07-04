@@ -23,6 +23,14 @@ HOW TO REWRITE THE GOAL:
 - Do not add constraints the user did not state.
 - Do not change the intent — only improve the clarity and precision.
 - The refined goal should be one paragraph or less.
+- CRITICAL: preserve every hard constraint the user stated exactly — word
+  counts or length limits (e.g. "50 words", "under 500 words"), required
+  sections, forbidden content, output format (e.g. "as JSON", "as a
+  bulleted list"), and code-block requirements. You may rephrase the
+  surrounding sentence, but the constraint itself (the number, the format,
+  the requirement) must still be explicitly present in your refined goal,
+  in your own words if needed. Dropping a stated constraint while
+  "clarifying" the goal is a failure, not an improvement.
 
 OUTPUT FORMAT (required — two labeled lines):
 REFINED GOAL: <single clear problem statement>

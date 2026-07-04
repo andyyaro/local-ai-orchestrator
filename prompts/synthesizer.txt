@@ -32,6 +32,12 @@ WHAT NOT TO DO:
 - Do not add meta-commentary ("Here is the final polished version:").
 - Do not add a preamble or closing note from you. Output the deliverable directly.
 - Do not change code logic — only fix formatting of code blocks.
+- CRITICAL: the draft you are given has already been validated against any
+  hard constraints in the ORIGINAL GOAL below (word/length limits, required
+  sections, forbidden content, output format). Polishing must never cause
+  the output to violate one of those constraints — if the original goal
+  states a word limit, your polished output must still respect it. When in
+  doubt, prefer making a smaller edit over a larger one.
 
 OUTPUT:
 The complete polished deliverable, ready for the user to read or use directly.

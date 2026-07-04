@@ -259,6 +259,48 @@ def test_apply_validator_results_leaves_verdict_unchanged_when_all_pass():
     assert "validator_failures" not in result
 
 
+# ── Regression test: Phase 6b Supervisor-drops-constraint bug ──────────────────
+
+def test_run_validators_uses_original_goal_when_refined_goal_drops_constraint():
+    """
+    The Phase 6b bug: the Supervisor's refined_goal can drop a hard
+    constraint the user actually stated (e.g. rewriting "50-word summary"
+    into an unconstrained restatement). run_validators must still catch
+    this by checking original_goal, the user's literal text, rather than
+    only the refined paraphrase that lost the constraint.
+    """
+    original_goal = "Write a 50-word summary of why sleep matters."
+    refined_goal_that_dropped_the_constraint = (
+        "Explain the physiological and psychological importance of sleep "
+        "in humans, with specific examples of how lack of sleep affects "
+        "cognitive function."
+    )
+    long_draft = " ".join(["word"] * 300)
+
+    results = run_validators(
+        refined_goal_that_dropped_the_constraint,
+        long_draft,
+        mode="writing",
+        original_goal=original_goal,
+    )
+
+    word_limit_results = [r for r in results if r.rule == "word_limit"]
+    assert len(word_limit_results) == 1
+    assert word_limit_results[0].passed is False
+
+
+def test_run_validators_without_original_goal_keeps_old_behavior():
+    """original_goal is optional -- omitting it must behave exactly as
+    before (extract constraints from `goal` itself), so existing callers
+    of run_validators(goal=..., draft=..., mode=...) are unaffected."""
+    results = run_validators(
+        goal="Write a comprehensive guide to Python decorators.",
+        draft="Some draft text.",
+        mode="writing",
+    )
+    assert results == []
+
+
 def test_regression_120_word_verdict_cannot_pass_the_judge():
     """
     The exact end-to-end regression this phase exists to fix: a Judge that

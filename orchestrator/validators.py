@@ -213,7 +213,9 @@ def check_code_block_presence(draft: str, required: bool) -> ValidationResult:
     return ValidationResult(rule="code_block_presence", passed=passed, detail=detail)
 
 
-def run_validators(goal: str, draft: str, mode: str) -> list[ValidationResult]:
+def run_validators(
+    goal: str, draft: str, mode: str, *, original_goal: str | None = None
+) -> list[ValidationResult]:
     """
     Run every constraint check applicable to this goal/mode and return the
     full list of results (not just failures), so passing checks can be
@@ -226,10 +228,19 @@ def run_validators(goal: str, draft: str, mode: str) -> list[ValidationResult]:
     check but are not auto-invoked here, since there is no existing
     per-task configuration surface describing what those constraints should
     be for an arbitrary goal.
+
+    `original_goal`, if given, is the user's raw goal text before Supervisor
+    refinement, and is used instead of `goal` for word-limit extraction.
+    This exists because the Supervisor's refined goal is not guaranteed to
+    preserve hard constraints the user actually stated (e.g. "50-word
+    summary" can get rewritten into an unconstrained restatement) -- the
+    original goal is the authoritative source for a stated constraint, so
+    it must be checked directly rather than trusting a refined paraphrase.
     """
     results: list[ValidationResult] = []
 
-    limit, limit_mode = extract_word_limit(goal)
+    constraint_source = original_goal if original_goal is not None else goal
+    limit, limit_mode = extract_word_limit(constraint_source)
     if limit is not None:
         tolerance = (
             max(1, round(limit * EXACT_TOLERANCE_FRACTION))
