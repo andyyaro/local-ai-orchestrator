@@ -22,6 +22,7 @@ from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
+from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 
 
 DEFAULT_MAX_LOOPS = 3
@@ -295,6 +296,13 @@ def run_pipeline(
             )
             print(f"  [Code Verification] {first_line}")
 
+        validator_results = run_validators(refined_goal, revised, mode)
+        save(
+            run_dir,
+            f"loop{iteration:02d}_validators.json",
+            json.dumps([r.__dict__ for r in validator_results], indent=2),
+        )
+
         verdict = _log_agent_call(
             log,
             "judge",
@@ -309,6 +317,7 @@ def run_pipeline(
         )
         if mode == "coding":
             verdict = _apply_code_verification_to_verdict(verdict, code_feedback, threshold)
+        verdict = apply_validator_results_to_verdict(verdict, validator_results)
         save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
 
         score = int(verdict["total_score"])
