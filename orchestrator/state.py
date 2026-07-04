@@ -15,6 +15,12 @@ class PipelineState(TypedDict, total=False):
     refined_goal: str            # supervisor-cleaned goal
     mode: str                    # writing | coding | planning | debugging | study | general
 
+    # Routing (Phase 3)
+    path: str                    # fast | normal | deep, chosen after supervisor
+    path_override: str           # optional forced path from the caller
+    skip_planner: bool           # True when the fast path skips the Planner node
+    skip_critic_fixer_loop: bool # True when the fast path skips Critic/Fixer
+
     # Pipeline data
     plan: str                    # planner numbered plan
     draft: str                   # current working draft updated each loop

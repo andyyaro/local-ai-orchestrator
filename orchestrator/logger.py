@@ -80,6 +80,9 @@ class PipelineLogger:
                     model_main=model_main, model_fast=model_fast,
                     max_loops=max_loops, threshold=threshold)
 
+    def path_selected(self, path: str):
+        self._write("INFO", "path_selected", path=path)
+
     def agent_start(self, agent: str, model: str, iteration: int = 0):
         self._write("INFO", "agent_start", agent=agent,
                     model=model, iteration=iteration)

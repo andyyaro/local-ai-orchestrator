@@ -106,6 +106,19 @@ def get_keep_alive() -> str:
     return memory_keep_alive or ollama_keep_alive or "5m"
 
 
+def get_path_settings(path_name: str) -> dict:
+    """Return the routing settings (skip_planner, skip_critic_fixer_loop,
+    max_loops, threshold) for a given path name (fast | normal | deep)."""
+    cfg = load_models_config()
+    paths = cfg.get("paths", {})
+    if path_name not in paths:
+        raise ValueError(
+            f"Unknown path '{path_name}' in config/models.yaml. "
+            f"Valid options: {', '.join(paths.keys())}"
+        )
+    return paths[path_name]
+
+
 def reload_config():
     """Force reload of cached configs after editing YAML files."""
     global _models_cache, _modes_cache
