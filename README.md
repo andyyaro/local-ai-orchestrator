@@ -390,7 +390,13 @@ bootstrap
 fast
 serious
 coding
+low_memory
 ```
+
+Each profile uses at most one distinct 14B-class model to avoid the model
+swapping a 24GB Mac incurs when two 14B-class models compete for memory.
+See [`docs/model-profiles.md`](docs/model-profiles.md) for the full memory
+budget rationale and when to use `low_memory` over `serious` or `coding`.
 
 Workflow behavior is controlled by:
 
