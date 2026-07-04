@@ -98,8 +98,19 @@ def _collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
 
 
 def _log_agent_call(log, metrics: RunMetrics, agent_name: str, model: str,
-                    call_fn, iteration: int = 0):
-    """Run one agent call with Section 19 structured start/end/error logging."""
+                    call_fn, iteration: int = 0, on_step=None):
+    """
+    Run one agent call with Section 19 structured start/end/error logging.
+
+    `on_step`, if given, is called with a plain event dict
+    ({"type": "step", "agent": ..., "status": "running"|"done", ...}) both
+    before and after the call -- this is the Phase 8 hook that lets
+    app/streamlit_app.py post progress to its UI without run_pipeline()
+    needing to know anything about Streamlit or a queue. Terminal usage
+    (main()) never passes this, so CLI behavior is unchanged.
+    """
+    if on_step:
+        on_step({"type": "step", "agent": agent_name, "status": "running"})
     t0 = time.time()
     log.agent_start(agent_name, model, iteration=iteration)
     try:
@@ -107,9 +118,13 @@ def _log_agent_call(log, metrics: RunMetrics, agent_name: str, model: str,
         elapsed_ms = int((time.time() - t0) * 1000)
         log.agent_end(agent_name, chars=len(str(result)), elapsed_ms=elapsed_ms)
         metrics.record_agent_call(agent_name, model, elapsed_ms)
+        if on_step:
+            on_step({"type": "step", "agent": agent_name, "status": "done", "output": str(result)})
         return result
     except Exception as exc:
         log.error(agent_name, str(exc))
+        if on_step:
+            on_step({"type": "error", "message": str(exc)})
         raise
 
 
@@ -146,6 +161,7 @@ def _run_critic_fixer_judge_iteration(
     judge: JudgeAgent, judge_model: str,
     effective_threshold: int,
     previous_code_feedback: str, previous_validator_feedback: str,
+    on_step=None,
 ) -> tuple[str, dict, int, str, str]:
     """
     Run one Critic -> Fixer -> (code verification) -> validate -> Judge
@@ -167,7 +183,7 @@ def _run_critic_fixer_judge_iteration(
     critique = _log_agent_call(
         log, metrics, "critic", critic_model,
         lambda: critic.run(goal=refined_goal, draft=draft),
-        iteration=iteration,
+        iteration=iteration, on_step=on_step,
     )
     if previous_code_feedback:
         critique += (
@@ -194,7 +210,7 @@ def _run_critic_fixer_judge_iteration(
             iteration=iteration,
             mode=mode,
         ),
-        iteration=iteration,
+        iteration=iteration, on_step=on_step,
     )
     save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
 
@@ -234,7 +250,7 @@ def _run_critic_fixer_judge_iteration(
             iteration=iteration,
             mode=mode,
         ),
-        iteration=iteration,
+        iteration=iteration, on_step=on_step,
     )
     if mode == "coding":
         verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
@@ -333,7 +349,20 @@ def run_pipeline(
     run_dir: Path,
     path_override: str | None = None,
     allow_cloud: bool = False,
+    on_step=None,
 ) -> tuple[dict, str]:
+    """
+    Run the full pipeline and return (summary, final_output).
+
+    `on_step`, if given, is called with a plain event dict for each agent
+    call ({"type": "step", ...}), each loop boundary ({"type": "loop_start"
+    / "loop_result", ...}), and any mid-run error ({"type": "error", ...}).
+    This is the Phase 8 hook that lets app/streamlit_app.py drive its live
+    progress UI by calling this same function from a background thread,
+    instead of maintaining its own separate pipeline implementation. When
+    `on_step` is None (the terminal `main()` path), this function's
+    behavior is identical to before Phase 8 -- only `print()`/log output.
+    """
     log = get_logger(run_dir.name)
     metrics = RunMetrics(run_dir.name)
     pipeline_start = time.time()
@@ -363,6 +392,7 @@ def run_pipeline(
         "supervisor",
         supervisor_model,
         lambda: supervisor.run(goal=goal),
+        on_step=on_step,
     )
     refined_goal = sup_result["refined_goal"]
     mode = sup_result["mode"]
@@ -406,6 +436,7 @@ def run_pipeline(
             "planner",
             planner_model,
             lambda: planner.run(goal=refined_goal, mode=mode),
+            on_step=on_step,
         )
         save(run_dir, "01_planner_plan.txt", plan)
         print(f"    Plan length  : {len(plan)} chars")
@@ -420,6 +451,7 @@ def run_pipeline(
         "builder",
         builder_model,
         lambda: builder.run(goal=refined_goal, plan=plan, mode=mode),
+        on_step=on_step,
     )
     save(run_dir, "02_builder_draft_v0.txt", draft)
     print(f"    Draft length : {len(draft)} chars")
@@ -452,6 +484,8 @@ def run_pipeline(
         iteration = 1
         summary["iterations_run"] = iteration
         header(f"LOOP {iteration}/1", "VERIFY → JUDGE (fast path, no critic/fixer)")
+        if on_step:
+            on_step({"type": "loop_start", "iteration": iteration, "max_loops": effective_max_loops})
 
         revised = draft
         code_feedback = ""
@@ -493,7 +527,7 @@ def run_pipeline(
                 iteration=iteration,
                 mode=mode,
             ),
-            iteration=iteration,
+            iteration=iteration, on_step=on_step,
         )
         if mode == "coding":
             verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
@@ -515,6 +549,11 @@ def run_pipeline(
             hard_fails=verdict.get("hard_fails", []),
         )
         print(f"    Score: {score_bar(score)}")
+        if on_step:
+            on_step({
+                "type": "loop_result", "iteration": iteration, "score": score,
+                "scores": summary["scores"].copy(), "passed": bool(verdict.get("pass")),
+            })
 
         best_score = score
         best_draft = revised
@@ -541,6 +580,8 @@ def run_pipeline(
             for iteration in range(2, effective_max_loops + 1):
                 summary["iterations_run"] = iteration
                 header(f"LOOP {iteration}/{effective_max_loops}", "REPAIR: CRITIC → FIXER → VERIFY → JUDGE")
+                if on_step:
+                    on_step({"type": "loop_start", "iteration": iteration, "max_loops": effective_max_loops})
 
                 revised, verdict, score, code_feedback, validator_feedback = _run_critic_fixer_judge_iteration(
                     log=log, metrics=metrics, run_dir=run_dir, summary=summary,
@@ -552,9 +593,16 @@ def run_pipeline(
                     effective_threshold=effective_threshold,
                     previous_code_feedback=previous_code_feedback,
                     previous_validator_feedback=previous_validator_feedback,
+                    on_step=on_step,
                 )
                 summary["scores"].append(score)
                 draft = revised
+
+                if on_step:
+                    on_step({
+                        "type": "loop_result", "iteration": iteration, "score": score,
+                        "scores": summary["scores"].copy(), "passed": bool(verdict.get("pass")),
+                    })
 
                 if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
                     best_score = score
@@ -579,6 +627,8 @@ def run_pipeline(
         for iteration in range(1, effective_max_loops + 1):
             summary["iterations_run"] = iteration
             header(f"LOOP {iteration}/{effective_max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
+            if on_step:
+                on_step({"type": "loop_start", "iteration": iteration, "max_loops": effective_max_loops})
 
             revised, verdict, score, code_feedback, validator_feedback = _run_critic_fixer_judge_iteration(
                 log=log, metrics=metrics, run_dir=run_dir, summary=summary,
@@ -590,8 +640,15 @@ def run_pipeline(
                 effective_threshold=effective_threshold,
                 previous_code_feedback=previous_code_feedback,
                 previous_validator_feedback=previous_validator_feedback,
+                on_step=on_step,
             )
             summary["scores"].append(score)
+
+            if on_step:
+                on_step({
+                    "type": "loop_result", "iteration": iteration, "score": score,
+                    "scores": summary["scores"].copy(), "passed": bool(verdict.get("pass")),
+                })
 
             if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
                 best_score = score
@@ -640,6 +697,7 @@ def run_pipeline(
             score=best_score,
             iterations=summary["iterations_run"],
         ),
+        on_step=on_step,
     )
 
     # Phase 7: optional, human-gated cloud escalation for the synthesizer

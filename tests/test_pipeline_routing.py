@@ -476,3 +476,73 @@ def test_fast_path_does_not_repair_when_max_loops_leaves_no_room(tmp_path, monke
 
     assert summary["passed"] is False
     assert summary["iterations_run"] == 1
+
+
+# ── Phase 8: on_step callback (Streamlit integration hook) ─────────────────────
+
+def test_run_pipeline_invokes_on_step_callback_for_agent_calls_and_loop_events(tmp_path, monkeypatch):
+    """
+    app/streamlit_app.py (Phase 8) calls run_pipeline() directly from a
+    background thread and forwards on_step's events to its UI event queue
+    instead of maintaining a separate, duplicated pipeline implementation.
+    This confirms the callback actually fires for every agent call and
+    loop boundary, not just that run_pipeline() still works when the
+    parameter is omitted (already covered by every other test in this file).
+    """
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": (
+                "Write a clear explanation of how connection pooling works "
+                "in a typical web application backend and why it matters "
+                "for latency under load, covering the main tradeoffs teams "
+                "usually run into."
+            ),
+            "mode": "general",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", lambda self, goal, mode: "1. Explain pooling.")
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": "Draft explaining connection pooling.",
+    )
+    monkeypatch.setattr(CriticAgent, "run", lambda self, goal, draft: "Add more detail.")
+    monkeypatch.setattr(
+        FixerAgent, "run",
+        lambda self, goal, draft, critique, iteration, mode="general": "Revised draft.",
+    )
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: "Final polished output.",
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    events = []
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="short goal text",
+        model_main=None,
+        model_fast=None,
+        max_loops=None,
+        threshold=None,
+        min_improvement=5,
+        run_dir=run_dir,
+        on_step=events.append,
+    )
+
+    assert summary["path"] == "normal"
+    assert final_output == "Final polished output."
+
+    step_agents = {e["agent"] for e in events if e["type"] == "step"}
+    assert step_agents == {"supervisor", "planner", "builder", "critic", "fixer", "judge", "synthesizer"}
+
+    done_events = {e["agent"]: e for e in events if e["type"] == "step" and e["status"] == "done"}
+    assert done_events["builder"]["output"] == "Draft explaining connection pooling."
+
+    loop_starts = [e for e in events if e["type"] == "loop_start"]
+    loop_results = [e for e in events if e["type"] == "loop_result"]
+    assert loop_starts and loop_starts[0]["iteration"] == 1
+    assert loop_results and loop_results[0]["passed"] is True
