@@ -10,11 +10,11 @@ Run with:
 
 import json
 import sys
-import time
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from queue import Queue, Empty
+from queue import Empty, Queue
 
 import streamlit as st
 
@@ -23,21 +23,16 @@ ROOT = Path(__file__).parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agents.supervisor import SupervisorAgent
-from agents.planner import PlannerAgent
 from agents.builder import BuilderAgent
 from agents.critic import CriticAgent
 from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
+from agents.planner import PlannerAgent
+from agents.supervisor import SupervisorAgent
 from agents.synthesizer import SynthesizerAgent
+from orchestrator.code_runner import verification_failed, verify_draft_code
 from orchestrator.config_loader import get_active_profile, get_model_for_role
-from orchestrator.code_runner import verify_draft_code, verification_failed
-from orchestrator.database import (
-    save_run,
-    load_all_runs,
-    load_run_by_id,
-    get_db_stats,
-)
+from orchestrator.database import get_db_stats, load_all_runs, load_run_by_id, save_run
 
 RUNS_DIR = ROOT / "runs"
 RUNS_DIR.mkdir(exist_ok=True)
@@ -75,8 +70,13 @@ def normalize_override(value: str) -> str | None:
     return None if value == "config-driven" else value
 
 
-def role_model(role: str, mode: str, model_main: str | None,
-               model_fast: str | None, model_judge: str | None) -> str:
+def role_model(
+    role: str,
+    mode: str,
+    model_main: str | None,
+    model_fast: str | None,
+    model_judge: str | None,
+) -> str:
     """Return the model for a role, honoring UI overrides when supplied."""
     if model_judge and role == "judge":
         return model_judge
@@ -107,12 +107,21 @@ def collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
         judge_path = run_dir / f"loop{i:02d}_judge.json"
         iterations_data.append({
             "iteration": i,
-            "critique": critique_path.read_text(encoding="utf-8")
-                        if critique_path.exists() else "",
-            "revised_draft": fixer_path.read_text(encoding="utf-8")
-                             if fixer_path.exists() else "",
-            "verdict": json.loads(judge_path.read_text(encoding="utf-8"))
-                       if judge_path.exists() else {},
+            "critique": (
+                critique_path.read_text(encoding="utf-8")
+                if critique_path.exists()
+                else ""
+            ),
+            "revised_draft": (
+                fixer_path.read_text(encoding="utf-8")
+                if fixer_path.exists()
+                else ""
+            ),
+            "verdict": (
+                json.loads(judge_path.read_text(encoding="utf-8"))
+                if judge_path.exists()
+                else {}
+            ),
             "score": score,
         })
     return iterations_data
@@ -141,8 +150,12 @@ def apply_code_verification_to_verdict(verdict: dict, code_feedback: str) -> dic
     return verdict
 
 
-def should_break_on_hard_fail(mode: str, verdict: dict, iteration: int,
-                              max_loops: int) -> bool:
+def should_break_on_hard_fail(
+    mode: str,
+    verdict: dict,
+    iteration: int,
+    max_loops: int,
+) -> bool:
     """Allow coding-mode broken_code to continue until max loops."""
     hard_fails = verdict.get("hard_fails") or []
     if not hard_fails:
@@ -152,12 +165,33 @@ def should_break_on_hard_fail(mode: str, verdict: dict, iteration: int,
     return True
 
 
+def render_score_status(score: int, threshold: int) -> str:
+    if score >= threshold:
+        return "Passed"
+    return "Below threshold"
+
+
+def render_status_pill(label: str, tone: str = "neutral"):
+    st.markdown(
+        f'<span class="status-pill status-{tone}">{label}</span>',
+        unsafe_allow_html=True,
+    )
+
+
 # ── Pipeline runner ──────────────────────────────────────────────────────────
 
-def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
-                        model_fast: str | None, model_judge: str | None,
-                        max_loops: int, threshold: int, min_improvement: int,
-                        run_dir: Path, event_queue: Queue):
+def run_pipeline_thread(
+    goal: str,
+    selected_mode: str,
+    model_main: str | None,
+    model_fast: str | None,
+    model_judge: str | None,
+    max_loops: int,
+    threshold: int,
+    min_improvement: int,
+    run_dir: Path,
+    event_queue: Queue,
+):
     """
     Runs the full pipeline in a background thread and posts events to event_queue
     so the Streamlit UI can display each completed agent step.
@@ -183,8 +217,13 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
 
         # Supervisor
         emit_step(event_queue, "Supervisor", "running")
-        supervisor_model = role_model("supervisor", "general", model_main,
-                                      model_fast, model_judge)
+        supervisor_model = role_model(
+            "supervisor",
+            "general",
+            model_main,
+            model_fast,
+            model_judge,
+        )
         summary["role_models"]["supervisor"] = supervisor_model
         supervisor = SupervisorAgent(model=supervisor_model)
         sup_result = supervisor.run(goal=goal)
@@ -197,16 +236,21 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             "Supervisor",
             "done",
             (
-                f"**Refined goal:** {refined_goal}\n\n"
-                f"**Supervisor suggested mode:** `{supervisor_mode}`\n\n"
-                f"**Selected UI mode:** `{selected_mode}`"
+                f"Refined goal: {refined_goal}\n\n"
+                f"Supervisor suggested mode: {supervisor_mode}\n\n"
+                f"Selected UI mode: {selected_mode}"
             ),
         )
 
         # Planner
         emit_step(event_queue, "Planner", "running")
-        planner_model = role_model("planner", selected_mode, model_main,
-                                   model_fast, model_judge)
+        planner_model = role_model(
+            "planner",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
         summary["role_models"]["planner"] = planner_model
         planner = PlannerAgent(model=planner_model)
         plan = planner.run(goal=refined_goal, mode=selected_mode)
@@ -215,8 +259,13 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
 
         # Builder
         emit_step(event_queue, "Builder", "running")
-        builder_model = role_model("builder", selected_mode, model_main,
-                                   model_fast, model_judge)
+        builder_model = role_model(
+            "builder",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
         summary["role_models"]["builder"] = builder_model
         builder = BuilderAgent(model=builder_model)
         draft = builder.run(goal=refined_goal, plan=plan, mode=selected_mode)
@@ -229,12 +278,27 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
         previous_code_feedback = ""
         stop_reason = f"max_loops ({max_loops}) reached"
 
-        critic_model = role_model("critic", selected_mode, model_main,
-                                  model_fast, model_judge)
-        fixer_model = role_model("fixer", selected_mode, model_main,
-                                 model_fast, model_judge)
-        judge_model = role_model("judge", selected_mode, model_main,
-                                 model_fast, model_judge)
+        critic_model = role_model(
+            "critic",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
+        fixer_model = role_model(
+            "fixer",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
+        judge_model = role_model(
+            "judge",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
         summary["role_models"].update({
             "critic": critic_model,
             "fixer": fixer_model,
@@ -279,14 +343,19 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             if selected_mode == "coding":
                 emit_step(event_queue, f"Loop {iteration} Code Verification", "running")
                 code_feedback = verify_draft_code(revised)
-                save(run_dir, f"loop{iteration:02d}_code_verification.txt", code_feedback)
+                code_run_file = f"loop{iteration:02d}_code_run.txt"
+                save(run_dir, code_run_file, code_feedback)
                 summary["code_verification"].append({
                     "iteration": iteration,
                     "failed": verification_failed(code_feedback),
-                    "feedback_file": f"loop{iteration:02d}_code_verification.txt",
+                    "feedback_file": code_run_file,
                 })
-                emit_step(event_queue, f"Loop {iteration} Code Verification", "done",
-                          f"```text\n{code_feedback}\n```")
+                emit_step(
+                    event_queue,
+                    f"Loop {iteration} Code Verification",
+                    "done",
+                    f"```text\n{code_feedback}\n```",
+                )
 
             emit_step(event_queue, f"Loop {iteration} Judge", "running")
             verdict = judge.run(
@@ -298,8 +367,12 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
             if selected_mode == "coding":
                 verdict = apply_code_verification_to_verdict(verdict, code_feedback)
             save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
-            emit_step(event_queue, f"Loop {iteration} Judge", "done",
-                      f"```json\n{json.dumps(verdict, indent=2)}\n```")
+            emit_step(
+                event_queue,
+                f"Loop {iteration} Judge",
+                "done",
+                f"```json\n{json.dumps(verdict, indent=2)}\n```",
+            )
 
             score = int(verdict["total_score"])
             summary["scores"].append(score)
@@ -345,8 +418,13 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
 
         # Final Synthesizer
         emit_step(event_queue, "Synthesizer", "running")
-        synthesizer_model = role_model("synthesizer", selected_mode, model_main,
-                                       model_fast, model_judge)
+        synthesizer_model = role_model(
+            "synthesizer",
+            selected_mode,
+            model_main,
+            model_fast,
+            model_judge,
+        )
         summary["role_models"]["synthesizer"] = synthesizer_model
         synthesizer = SynthesizerAgent(model=synthesizer_model)
         final_output = synthesizer.run(
@@ -391,109 +469,365 @@ def run_pipeline_thread(goal: str, selected_mode: str, model_main: str | None,
         event_queue.put({"type": "error", "message": str(exc)})
 
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config and styling ──────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Local AI Orchestrator",
-    page_icon="🧠",
+    page_icon="",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
+)
+
+
+st.markdown(
+    """
+<style>
+:root {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --surface-soft: #f4efe6;
+    --surface-muted: #ede5d7;
+    --text: #111111;
+    --text-muted: #5f5a52;
+    --border: #ded6c8;
+    --green: #1f7a4d;
+    --green-dark: #145c39;
+    --green-soft: #e6f2eb;
+}
+
+html, body, [class*="css"] {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.stApp {
+    background: var(--bg);
+    color: var(--text);
+}
+
+[data-testid="stSidebar"] {
+    background: var(--surface-soft);
+    border-right: 1px solid var(--border);
+}
+
+[data-testid="stSidebar"] * {
+    color: var(--text);
+}
+
+[data-testid="stHeader"] {
+    background: rgba(251, 250, 247, 0.82);
+    backdrop-filter: blur(16px);
+}
+
+#MainMenu, footer, [data-testid="stDecoration"], [data-testid="stToolbar"] {
+    visibility: hidden;
+    height: 0;
+}
+
+.block-container {
+    max-width: 880px;
+    padding-top: 1.4rem;
+    padding-bottom: 3rem;
+}
+
+h1, h2, h3 {
+    color: var(--text);
+    letter-spacing: -0.035em;
+}
+
+h1 {
+    font-size: 2rem !important;
+    line-height: 1.1 !important;
+    margin-bottom: 0.15rem !important;
+}
+
+h2 {
+    font-size: 1rem !important;
+    margin-top: 0.7rem !important;
+    letter-spacing: -0.02em;
+}
+
+h3 {
+    font-size: 1rem !important;
+    letter-spacing: 0 !important;
+}
+
+p, li, label, .stMarkdown, .stCaption {
+    color: var(--text);
+}
+
+.small-muted {
+    color: var(--text-muted);
+    font-size: 0.94rem;
+    line-height: 1.6;
+}
+
+.hero {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin-bottom: 1rem;
+}
+
+.hero-kicker {
+    display: none;
+}
+
+.hero-subtitle {
+    max-width: 520px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.35;
+    margin-top: 0.25rem;
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 1.2rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.card-soft {
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 1.2rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.metric-card {
+    display: none;
+}
+
+.metric-label {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.metric-value {
+    color: var(--text);
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin-top: 0.35rem;
+    letter-spacing: -0.045em;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.32rem 0.72rem;
+    font-size: 0.78rem;
+    font-weight: 750;
+    border: 1px solid var(--border);
+    margin-right: 0.35rem;
+}
+
+.status-green {
+    background: var(--green-soft);
+    color: var(--green-dark);
+    border-color: #b8d9c7;
+}
+
+.status-neutral {
+    background: var(--surface-soft);
+    color: var(--text-muted);
+}
+
+.status-dark {
+    background: var(--text);
+    color: white;
+    border-color: var(--text);
+}
+
+hr {
+    border-color: var(--border) !important;
+}
+
+div.stButton > button:first-child {
+    background: var(--green) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--green) !important;
+    border-radius: 999px !important;
+    padding: 0.68rem 1.35rem !important;
+    font-weight: 800 !important;
+}
+
+div.stButton > button:first-child:hover {
+    background: var(--green-dark) !important;
+    color: #ffffff !important;
+    border-color: var(--green-dark) !important;
+}
+
+.stDownloadButton button {
+    background: var(--text) !important;
+    color: white !important;
+    border-radius: 999px !important;
+    border: 1px solid var(--text) !important;
+}
+
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] div,
+[data-testid="stNumberInput"] input {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    border-radius: 18px !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stMetric"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1rem;
+}
+
+[data-testid="stMetricLabel"] {
+    color: var(--text-muted);
+}
+
+[data-testid="stMetricValue"] {
+    color: var(--text);
+}
+
+.stAlert {
+    border-radius: 18px;
+}
+
+[data-testid="stStatusWidget"] {
+    color: var(--green);
+}
+
+div[data-testid="stExpander"] {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+}
+
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+code {
+    color: var(--green-dark);
+}
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 
 # ── Sidebar — configuration ──────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("⚙️ Configuration")
-    st.caption(f"Active profile: `{get_active_profile()}`")
-
-    model_main_choice = st.selectbox(
-        "Builder / Fixer / Synthesizer model",
-        options=[
-            "config-driven",
-            "qwen2.5:14b",
-            "qwen2.5-coder:14b",
-            "llama3.1:8b",
-            "llama3.2:3b",
-        ],
-        index=0,
-    )
-
-    model_judge_choice = st.selectbox(
-        "Judge model",
-        options=[
-            "config-driven",
-            "phi4:14b",
-            "llama3.1:8b",
-            "llama3.2:3b",
-        ],
-        index=0,
-    )
-
-    model_fast_choice = st.selectbox(
-        "Fast model (Supervisor / Planner / Critic)",
-        options=[
-            "config-driven",
-            "llama3.2:3b",
-            "llama3.1:8b",
-            "gemma3:12b",
-        ],
-        index=0,
-    )
+    st.markdown("## Controls")
+    st.caption(f"`{get_active_profile()}` profile")
 
     mode = st.selectbox(
-        "Workflow mode",
+        "Mode",
         options=["general", "writing", "coding", "planning", "debugging", "study"],
         index=0,
     )
 
-    max_loops = st.slider("Max improvement loops", min_value=1, max_value=6,
-                          value=DEFAULT_MAX_LOOPS, step=1)
-    threshold = st.slider("Pass threshold (score / 100)", min_value=50,
-                          max_value=95, value=DEFAULT_THRESHOLD, step=5)
-    min_improvement = st.slider("Min score gain before stall stop",
-                                min_value=0, max_value=15,
-                                value=DEFAULT_MIN_IMPROVEMENT, step=1)
+    with st.expander("Run settings", expanded=False):
+        max_loops = st.slider(
+            "Max loops",
+            min_value=1,
+            max_value=6,
+            value=DEFAULT_MAX_LOOPS,
+            step=1,
+        )
+        threshold = st.slider(
+            "Pass threshold",
+            min_value=50,
+            max_value=95,
+            value=DEFAULT_THRESHOLD,
+            step=5,
+        )
+        min_improvement = st.slider(
+            "Minimum improvement",
+            min_value=0,
+            max_value=15,
+            value=DEFAULT_MIN_IMPROVEMENT,
+            step=1,
+        )
 
-    st.divider()
-    st.caption("All models run locally via Ollama.")
-    st.caption("No data is sent to external servers.")
-    if mode in {"coding", "debugging"}:
-        st.warning(
-            "Coding/debugging mode may use qwen2.5-coder:14b from config. "
-            "Do not select it until that model is installed."
+    with st.expander("Model overrides", expanded=False):
+        model_main_choice = st.selectbox(
+            "Main model",
+            options=[
+                "config-driven",
+                "qwen2.5:14b",
+                "qwen2.5-coder:14b",
+                "llama3.1:8b",
+                "llama3.2:3b",
+            ],
+            index=0,
         )
+
+        model_fast_choice = st.selectbox(
+            "Fast model",
+            options=[
+                "config-driven",
+                "llama3.2:3b",
+                "llama3.1:8b",
+                "gemma3:12b",
+            ],
+            index=0,
+        )
+
+        model_judge_choice = st.selectbox(
+            "Judge model",
+            options=[
+                "config-driven",
+                "phi4:14b",
+                "llama3.1:8b",
+                "llama3.2:3b",
+            ],
+            index=0,
+        )
+
+    render_status_pill("Local only", "green")
+
     if mode == "coding":
-        st.warning(
-            "Coding mode executes generated Python code locally with a timeout "
-            "and a safety blocklist. Use only for tasks you trust."
-        )
+        with st.expander("Coding safety", expanded=False):
+            st.caption(
+                "Generated Python can be executed locally with a timeout and "
+                "a safety blocklist. Review code before reusing it."
+            )
 
 
 # ── Main area ────────────────────────────────────────────────────────────────
 
-st.title("🧠 Local AI Orchestrator")
-st.caption("Multi-agent quality loop · Runs entirely on your Mac · Powered by Ollama")
-
-goal = st.text_area(
-    "Enter your goal or task",
-    placeholder=(
-        "Example: Write a technical blog post explaining how attention mechanisms "
-        "work in transformer models, suitable for a Python developer new to ML."
-    ),
-    height=120,
+st.markdown(
+    """
+<div class="hero">
+    <h1>Local AI Orchestrator</h1>
+    <div class="hero-subtitle">Private multi-agent runs on your Mac.</div>
+</div>
+""",
+    unsafe_allow_html=True,
 )
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    run_btn = st.button("▶  Run Pipeline", type="primary", width="stretch")
-with col2:
-    st.caption(
-        "Runtime depends on selected models. Serious profile runs can take several "
-        "minutes per loop; bootstrap/fast models are quicker."
-    )
+st.markdown("## Task")
 
-st.divider()
+goal = st.text_area(
+    "Goal",
+    placeholder="What should the pipeline improve?",
+    height=135,
+    label_visibility="collapsed",
+)
+
+run_btn = st.button("Run pipeline", type="primary", width="stretch")
+
+st.markdown("---")
 
 
 # ── Run and display events ───────────────────────────────────────────────────
@@ -510,7 +844,7 @@ if run_btn:
     run_dir = make_run_dir()
     event_queue: Queue = Queue()
 
-    st.subheader("📡 Live Pipeline Output")
+    st.markdown("## Progress")
     output_placeholder = st.container()
     score_placeholder = st.empty()
     final_placeholder = st.empty()
@@ -552,12 +886,15 @@ if run_btn:
             with output_placeholder:
                 if status == "running":
                     agent_expanders[agent] = st.status(
-                        f"⏳ {agent}...", expanded=False
+                        f"{agent}",
+                        expanded=False,
                     )
-                    agent_expanders[agent].write("Running...")
+                    agent_expanders[agent].write("Running")
                 elif status == "done" and agent in agent_expanders:
                     agent_expanders[agent].update(
-                        label=f"✅ {agent}", state="complete", expanded=False
+                        label=f"{agent}",
+                        state="complete",
+                        expanded=False,
                     )
                     with agent_expanders[agent]:
                         st.markdown(output)
@@ -565,45 +902,55 @@ if run_btn:
         elif etype == "loop_start":
             with output_placeholder:
                 st.markdown(
-                    f"---\n**🔄 Loop {event['iteration']} of {event['max_loops']}**"
+                    f"""
+<div class="card-soft">
+    <strong>Loop {event['iteration']} of {event['max_loops']}</strong>
+</div>
+""",
+                    unsafe_allow_html=True,
                 )
 
         elif etype == "loop_result":
             scores_so_far = event["scores"]
             with score_placeholder.container():
-                st.subheader("📊 Score Progression")
-                if len(scores_so_far) > 1:
-                    st.line_chart(
-                        {"Score": scores_so_far},
-                        width="stretch",
-                        height=200,
-                    )
-                elif scores_so_far:
+                st.markdown("## Score progression")
+                score_cols = st.columns([1, 1, 3])
+                with score_cols[0]:
                     st.metric("Current score", f"{scores_so_far[-1]}/100")
-                    st.caption(f"Score bar: `{event['score_bar']}`")
+                with score_cols[1]:
+                    st.metric("Status", render_score_status(scores_so_far[-1], threshold))
+                with score_cols[2]:
+                    if len(scores_so_far) > 1:
+                        st.line_chart(
+                            {"Score": scores_so_far},
+                            width="stretch",
+                            height=180,
+                        )
+                    else:
+                        st.progress(scores_so_far[-1] / 100)
 
         elif etype == "final":
             output = event["output"]
             summary = event["summary"]
 
             with final_placeholder.container():
-                st.divider()
-                st.subheader("✨ Final Output")
+                st.markdown("---")
+                st.markdown("## Final output")
                 st.markdown(output)
                 st.download_button(
-                    label="📥 Download final output",
+                    label="Download final output",
                     data=output,
                     file_name="final_output.txt",
                     mime="text/plain",
                 )
 
             with summary_placeholder.container():
-                st.divider()
-                st.subheader("📋 Run Summary")
+                st.markdown("---")
+                st.markdown("## Run summary")
                 col_a, col_b, col_c, col_d = st.columns(4)
                 col_a.metric("Final score", f"{summary['final_score']}/100")
-                col_b.metric("Passed", "Yes ✓" if summary["passed"] else "No ✗")
-                col_c.metric("Loops run", summary["iterations_run"])
+                col_b.metric("Result", "Passed" if summary["passed"] else "Failed")
+                col_c.metric("Loops", summary["iterations_run"])
                 col_d.metric("Mode", summary["mode"])
 
                 st.caption(f"Stop reason: {summary['stop_reason']}")
@@ -620,7 +967,7 @@ if run_btn:
                     )
 
                 if summary["scores"]:
-                    st.subheader("Score history")
+                    st.markdown("### Score history")
                     st.line_chart(
                         {"Score": summary["scores"]},
                         width="stretch",
@@ -641,8 +988,8 @@ if run_btn:
 
 # ── Run history panel ─────────────────────────────────────────────────────────
 
-st.divider()
-st.subheader("🗂️ Run History")
+st.markdown("---")
+st.markdown("## Recent runs")
 
 stats = get_db_stats()
 stat_a, stat_b, stat_c = st.columns(3)
@@ -696,3 +1043,4 @@ else:
 
             st.markdown("### Final output")
             st.markdown(selected_run.get("final_output", "[not stored]"))
+
