@@ -22,6 +22,7 @@ from orchestrator.config_loader import get_active_profile, get_model_for_role
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
+from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 
 
@@ -148,19 +149,13 @@ def run_pipeline(
     goal: str,
     model_main: str | None,
     model_fast: str | None,
-    max_loops: int,
-    threshold: int,
+    max_loops: int | None,
+    threshold: int | None,
     min_improvement: int,
     run_dir: Path,
+    path_override: str | None = None,
 ) -> tuple[dict, str]:
     log = get_logger(run_dir.name)
-    log.run_start(
-        goal=goal,
-        model_main=model_main or "config-driven",
-        model_fast=model_fast or "config-driven",
-        max_loops=max_loops,
-        threshold=threshold,
-    )
 
     summary = {
         "goal": goal,
@@ -168,8 +163,6 @@ def run_pipeline(
         "model_main_override": model_main,
         "model_fast_override": model_fast,
         "role_models": {},
-        "threshold": threshold,
-        "max_loops": max_loops,
         "iterations_run": 0,
         "scores": [],
         "code_verification": [],
@@ -195,18 +188,42 @@ def run_pipeline(
     print(f"    Refined goal : {refined_goal}")
     print(f"    Mode         : {mode}")
 
-    header("STEP 2", "PLANNER — Create execution plan")
-    planner_model = _role_model("planner", mode, model_main, model_fast)
-    summary["role_models"]["planner"] = planner_model
-    planner = PlannerAgent(model=planner_model)
-    plan = _log_agent_call(
-        log,
-        "planner",
-        planner_model,
-        lambda: planner.run(goal=refined_goal, mode=mode),
+    path = classify_path(refined_goal, mode, override=path_override)
+    path_config = get_path_config(path)
+    effective_max_loops = max_loops if max_loops is not None else path_config["max_loops"]
+    effective_threshold = threshold if threshold is not None else path_config["threshold"]
+    summary["path"] = path
+    summary["max_loops"] = effective_max_loops
+    summary["threshold"] = effective_threshold
+    log.path_selected(path)
+    print(f"    Path         : {path}")
+
+    log.run_start(
+        goal=goal,
+        model_main=model_main or "config-driven",
+        model_fast=model_fast or "config-driven",
+        max_loops=effective_max_loops,
+        threshold=effective_threshold,
     )
-    save(run_dir, "01_planner_plan.txt", plan)
-    print(f"    Plan length  : {len(plan)} chars")
+
+    if path_config["skip_planner"]:
+        plan = refined_goal
+        planner_model = _role_model("planner", mode, model_main, model_fast)
+        summary["role_models"]["planner"] = planner_model
+        print("    Planner skipped (fast path) — refined goal used directly as plan")
+    else:
+        header("STEP 2", "PLANNER — Create execution plan")
+        planner_model = _role_model("planner", mode, model_main, model_fast)
+        summary["role_models"]["planner"] = planner_model
+        planner = PlannerAgent(model=planner_model)
+        plan = _log_agent_call(
+            log,
+            "planner",
+            planner_model,
+            lambda: planner.run(goal=refined_goal, mode=mode),
+        )
+        save(run_dir, "01_planner_plan.txt", plan)
+        print(f"    Plan length  : {len(plan)} chars")
 
     header("STEP 3", "BUILDER — Write first draft")
     builder_model = _role_model("builder", mode, model_main, model_fast)
@@ -227,54 +244,16 @@ def run_pipeline(
     previous_code_feedback = ""
     stop_reason = "max_loops"
 
-    critic_model = _role_model("critic", mode, model_main, model_fast)
-    fixer_model = _role_model("fixer", mode, model_main, model_fast)
     judge_model = _role_model("judge", mode, model_main, model_fast)
-    summary["role_models"].update({
-        "critic": critic_model,
-        "fixer": fixer_model,
-        "judge": judge_model,
-    })
+    summary["role_models"]["judge"] = judge_model
+    judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold)
 
-    critic = CriticAgent(model=critic_model)
-    fixer = FixerAgent(model=fixer_model)
-    judge = JudgeAgent(model=judge_model, pass_threshold=threshold)
-
-    for iteration in range(1, max_loops + 1):
+    if path_config["skip_critic_fixer_loop"]:
+        iteration = 1
         summary["iterations_run"] = iteration
-        header(f"LOOP {iteration}/{max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
+        header(f"LOOP {iteration}/1", "VERIFY → JUDGE (fast path, no critic/fixer)")
 
-        print(f"  [Critic] Reviewing draft (iteration {iteration})...")
-        critique = _log_agent_call(
-            log,
-            "critic",
-            critic_model,
-            lambda: critic.run(goal=refined_goal, draft=draft),
-            iteration=iteration,
-        )
-        if previous_code_feedback:
-            critique += (
-                "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
-                f"{previous_code_feedback}\n"
-                "The next revision must fix these execution issues."
-            )
-        save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
-
-        revised = _log_agent_call(
-            log,
-            "fixer",
-            fixer_model,
-            lambda: fixer.run(
-                goal=refined_goal,
-                draft=draft,
-                critique=critique,
-                iteration=iteration,
-                mode=mode,
-            ),
-            iteration=iteration,
-        )
-        save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
-
+        revised = draft
         code_feedback = ""
         if mode == "coding":
             print("  [Code Verification] Running extracted Python code...")
@@ -316,7 +295,7 @@ def run_pipeline(
             iteration=iteration,
         )
         if mode == "coding":
-            verdict = _apply_code_verification_to_verdict(verdict, code_feedback, threshold)
+            verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
         verdict = apply_validator_results_to_verdict(verdict, validator_results)
         save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
 
@@ -331,36 +310,149 @@ def run_pipeline(
         )
         print(f"    Score: {score_bar(score)}")
 
-        if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
-            best_score = score
-            best_draft = revised
-            save(run_dir, "best_draft.txt", best_draft)
+        best_score = score
+        best_draft = revised
+        save(run_dir, "best_draft.txt", best_draft)
+        draft = revised
 
         if verdict["pass"]:
-            stop_reason = f"passed (score {score} >= threshold {threshold})"
-            draft = revised
-            break
+            stop_reason = f"passed (score {score} >= threshold {effective_threshold})"
+        elif verdict.get("hard_fails"):
+            stop_reason = f"hard_fail: {verdict['hard_fails']}"
+        else:
+            stop_reason = f"fast path single iteration complete (score {score})"
+    else:
+        critic_model = _role_model("critic", mode, model_main, model_fast)
+        fixer_model = _role_model("fixer", mode, model_main, model_fast)
+        summary["role_models"].update({
+            "critic": critic_model,
+            "fixer": fixer_model,
+        })
 
-        if iteration > 1:
-            improvement = score - previous_score
-            if improvement < min_improvement and not (mode == "coding" and verification_failed(code_feedback)):
-                stop_reason = (
-                    f"stalled (improvement {improvement} < "
-                    f"min_improvement {min_improvement})"
+        critic = CriticAgent(model=critic_model)
+        fixer = FixerAgent(model=fixer_model)
+
+        for iteration in range(1, effective_max_loops + 1):
+            summary["iterations_run"] = iteration
+            header(f"LOOP {iteration}/{effective_max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
+
+            print(f"  [Critic] Reviewing draft (iteration {iteration})...")
+            critique = _log_agent_call(
+                log,
+                "critic",
+                critic_model,
+                lambda: critic.run(goal=refined_goal, draft=draft),
+                iteration=iteration,
+            )
+            if previous_code_feedback:
+                critique += (
+                    "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
+                    f"{previous_code_feedback}\n"
+                    "The next revision must fix these execution issues."
                 )
+            save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
+
+            revised = _log_agent_call(
+                log,
+                "fixer",
+                fixer_model,
+                lambda: fixer.run(
+                    goal=refined_goal,
+                    draft=draft,
+                    critique=critique,
+                    iteration=iteration,
+                    mode=mode,
+                ),
+                iteration=iteration,
+            )
+            save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
+
+            code_feedback = ""
+            if mode == "coding":
+                print("  [Code Verification] Running extracted Python code...")
+                code_feedback = verify_draft_code(revised)
+                code_failed = verification_failed(code_feedback)
+                code_run_file = f"loop{iteration:02d}_code_run.txt"
+                save(run_dir, code_run_file, code_feedback)
+                summary["code_verification"].append({
+                    "iteration": iteration,
+                    "failed": code_failed,
+                    "feedback_file": code_run_file,
+                })
+                first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
+                log.code_verification(
+                    iteration=iteration,
+                    success=not code_failed,
+                    hard_fail=code_failed,
+                    summary=first_line,
+                )
+                print(f"  [Code Verification] {first_line}")
+
+            validator_results = run_validators(refined_goal, revised, mode)
+            save(
+                run_dir,
+                f"loop{iteration:02d}_validators.json",
+                json.dumps([r.__dict__ for r in validator_results], indent=2),
+            )
+
+            verdict = _log_agent_call(
+                log,
+                "judge",
+                judge_model,
+                lambda: judge.run(
+                    goal=refined_goal,
+                    draft=revised,
+                    iteration=iteration,
+                    mode=mode,
+                ),
+                iteration=iteration,
+            )
+            if mode == "coding":
+                verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
+            verdict = apply_validator_results_to_verdict(verdict, validator_results)
+            save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
+
+            score = int(verdict["total_score"])
+            summary["scores"].append(score)
+            log.score(
+                iteration=iteration,
+                score=score,
+                passed=bool(verdict["pass"]),
+                category_scores=verdict.get("scores", {}),
+                hard_fails=verdict.get("hard_fails", []),
+            )
+            print(f"    Score: {score_bar(score)}")
+
+            if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
+                best_score = score
+                best_draft = revised
+                save(run_dir, "best_draft.txt", best_draft)
+
+            if verdict["pass"]:
+                stop_reason = f"passed (score {score} >= threshold {effective_threshold})"
                 draft = revised
                 break
 
-        if _should_break_on_hard_fail(mode, verdict, iteration, max_loops):
-            stop_reason = f"hard_fail: {verdict['hard_fails']}"
-            draft = revised
-            break
+            if iteration > 1:
+                improvement = score - previous_score
+                if improvement < min_improvement and not (mode == "coding" and verification_failed(code_feedback)):
+                    stop_reason = (
+                        f"stalled (improvement {improvement} < "
+                        f"min_improvement {min_improvement})"
+                    )
+                    draft = revised
+                    break
 
-        previous_score = score
-        previous_code_feedback = code_feedback
-        draft = revised
-    else:
-        stop_reason = f"max_loops ({max_loops}) reached"
+            if _should_break_on_hard_fail(mode, verdict, iteration, effective_max_loops):
+                stop_reason = f"hard_fail: {verdict['hard_fails']}"
+                draft = revised
+                break
+
+            previous_score = score
+            previous_code_feedback = code_feedback
+            draft = revised
+        else:
+            stop_reason = f"max_loops ({effective_max_loops}) reached"
 
     header("FINAL", "SYNTHESIZER — Polish best draft")
     synthesizer_model = _role_model("synthesizer", mode, model_main, model_fast)
@@ -381,7 +473,7 @@ def run_pipeline(
 
     summary["stop_reason"] = stop_reason
     summary["final_score"] = best_score
-    summary["passed"] = best_score >= threshold
+    summary["passed"] = best_score >= effective_threshold
     save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
 
     log.stop(
@@ -396,9 +488,9 @@ def run_pipeline(
         refined_goal=refined_goal,
         mode=mode,
         model_main=model_main or builder_model,
-        model_fast=model_fast or critic_model,
+        model_fast=model_fast or judge_model,
         final_score=best_score,
-        passed=(best_score >= threshold),
+        passed=(best_score >= effective_threshold),
         stop_reason=stop_reason,
         scores=summary["scores"],
         run_dir=str(run_dir),
@@ -422,12 +514,16 @@ def main():
                         help="Optional override for Builder/Fixer/Judge/Synthesizer.")
     parser.add_argument("--model-fast", default=None,
                         help="Optional override for Supervisor/Planner/Critic.")
-    parser.add_argument("--max-loops", type=int, default=DEFAULT_MAX_LOOPS,
-                        help=f"Max improvement loops. Default: {DEFAULT_MAX_LOOPS}")
-    parser.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
-                        help=f"Pass score (0-100). Default: {DEFAULT_THRESHOLD}")
+    parser.add_argument("--max-loops", type=int, default=None,
+                        help="Max improvement loops. Default: path-determined "
+                             f"(falls back to {DEFAULT_MAX_LOOPS} for an unrecognized path).")
+    parser.add_argument("--threshold", type=int, default=None,
+                        help="Pass score (0-100). Default: path-determined "
+                             f"(falls back to {DEFAULT_THRESHOLD} for an unrecognized path).")
     parser.add_argument("--min-improvement", type=int, default=DEFAULT_MIN_IMPROVEMENT,
                         help=f"Min score gain per loop before stopping. Default: {DEFAULT_MIN_IMPROVEMENT}")
+    parser.add_argument("--path", choices=["auto", "fast", "normal", "deep"], default="auto",
+                        help="Pipeline path. 'auto' classifies the goal automatically. Default: auto")
     args = parser.parse_args()
 
     init_db()
@@ -442,8 +538,9 @@ def main():
     print(f"  Profile     : {active_profile}")
     print(f"  Main model  : {args.model_main or 'config-driven'}")
     print(f"  Fast model  : {args.model_fast or 'config-driven'}")
-    print(f"  Max loops   : {args.max_loops}")
-    print(f"  Threshold   : {args.threshold}/100")
+    print(f"  Max loops   : {args.max_loops if args.max_loops is not None else 'auto (path-determined)'}")
+    print(f"  Threshold   : {(str(args.threshold) + '/100') if args.threshold is not None else 'auto (path-determined)'}")
+    print(f"  Path        : {args.path}")
     print(f"  Run dir     : {run_dir}")
 
     start = datetime.now()
@@ -457,6 +554,7 @@ def main():
             threshold=args.threshold,
             min_improvement=args.min_improvement,
             run_dir=run_dir,
+            path_override=None if args.path == "auto" else args.path,
         )
     except KeyboardInterrupt:
         print("\n\n[INTERRUPTED] Run stopped by user.")
@@ -479,7 +577,8 @@ def main():
     print(f"  Stop reason   : {summary['stop_reason']}")
     print(f"  Final score   : {score_bar(summary['final_score'])}")
     print(f"  Passed        : {'YES ✓' if summary['passed'] else 'NO ✗'}")
-    print(f"  Loops run     : {summary['iterations_run']} / {args.max_loops}")
+    print(f"  Path selected : {summary.get('path', 'n/a')}")
+    print(f"  Loops run     : {summary['iterations_run']} / {summary['max_loops']}")
     if summary["scores"]:
         score_history = " → ".join(str(s) for s in summary["scores"])
         print(f"  Score history : {score_history}")
