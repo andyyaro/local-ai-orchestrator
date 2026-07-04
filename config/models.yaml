@@ -126,3 +126,29 @@ resilience:
     base_seconds: 1
     max_seconds: 30
     max_retries: 4
+
+# Phase 7 — optional cloud fallback scaffolding. `enabled: false` is the
+# only value that matters on first read: everything else here is inert
+# until that's flipped, and even then a real call also requires the
+# --allow-cloud CLI flag, an allow-listed role, a passing budget check,
+# and interactive human approval (see orchestrator/cloud_policy.py). The
+# model ID and pricing below are placeholders carried from the Phase 7
+# research report and have NOT been verified against the provider's
+# current published documentation -- orchestrator/adapters.py's
+# AnthropicAdapter deliberately still raises NotImplementedError until
+# that verification happens. Do not treat this pricing as accurate.
+cloud:
+  enabled: false
+  provider: anthropic
+  model: "claude-sonnet-5"
+  allowed_roles: ["judge", "synthesizer"]
+  require_approval: true
+  send_full_project_state: false
+  budget:
+    per_run_usd: 0.25
+    daily_usd: 2.00
+    monthly_usd: 20.00
+    block_over_budget: true
+  pricing:
+    input_per_million_usd: 2.00
+    output_per_million_usd: 10.00

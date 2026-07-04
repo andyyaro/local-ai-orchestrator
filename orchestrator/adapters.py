@@ -127,18 +127,77 @@ class OpenAIAdapter(ModelAdapter):
 
 class AnthropicAdapter(ModelAdapter):
     """
-    Future: Anthropic Claude API adapter.
-    Requires: pip install anthropic
-    Requires: ANTHROPIC_API_KEY in .env
-    To activate: set provider: anthropic in config/models.yaml
+    Future: Anthropic Claude API adapter, used by the optional Phase 7
+    cloud escalation path (orchestrator/cloud_policy.py,
+    orchestrator/cost_tracker.py). Requires: pip install anthropic,
+    ANTHROPIC_API_KEY in .env, and cloud.enabled: true in
+    config/models.yaml.
+
+    Deliberately still unimplemented: the Phase 7 guide requires
+    personally verifying the model ID and pricing in
+    config/models.yaml's `cloud` section against Anthropic's current
+    published documentation before wiring a real call here -- copying an
+    unverified model ID or price from a research report risks a broken
+    API call or an incorrect budget check in cost_tracker.py. That
+    verification has not happened in this session, so this intentionally
+    still raises NotImplementedError. Use MockCloudAdapter for all tests
+    and any development work in the meantime.
     """
 
     def call(self, model: str, prompt: str, temperature: float = 0.7,
              num_ctx: int = 4096, timeout: int | None = None) -> str:
         raise NotImplementedError(
-            "Anthropic adapter is not yet implemented. "
+            "Anthropic adapter is not yet implemented: the model ID and "
+            "pricing in config/models.yaml's cloud section have not been "
+            "verified against Anthropic's current published documentation. "
             "Set provider: ollama in config/models.yaml to use local models."
         )
+
+
+# ── Cloud escalation adapter factory (Phase 7) ────────────────────────────────
+
+def get_cloud_adapter() -> ModelAdapter:
+    """
+    Return the adapter for the optional cloud escalation path, based on
+    config/models.yaml's cloud.provider -- independent of the top-level
+    `provider` field used by get_adapter(), which stays "ollama" for every
+    local call even when cloud fallback is enabled. Only ever reached
+    after orchestrator.cloud_policy.should_attempt_cloud() and human
+    approval have already passed.
+    """
+    from orchestrator.config_loader import get_cloud_config
+    provider = get_cloud_config().get("provider", "anthropic")
+    if provider == "anthropic":
+        return AnthropicAdapter()
+    if provider == "openai":
+        return OpenAIAdapter()
+    raise ValueError(
+        f"Unknown cloud provider '{provider}' in config/models.yaml's cloud "
+        "section. Valid options: anthropic, openai"
+    )
+
+
+class MockCloudAdapter(ModelAdapter):
+    """
+    Test/development-only stand-in for a real cloud adapter. Returns a
+    canned, deterministic response with no network call at all -- this is
+    what every Phase 7 test uses, never AnthropicAdapter or OpenAIAdapter.
+    Records every call it receives so tests can assert on what was sent.
+    """
+
+    def __init__(self, canned_response: str = "MOCK_CLOUD_RESPONSE"):
+        self.canned_response = canned_response
+        self.calls: list[dict] = []
+
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             num_ctx: int = 4096, timeout: int | None = None) -> str:
+        self.calls.append({
+            "model": model,
+            "prompt": prompt,
+            "temperature": temperature,
+            "num_ctx": num_ctx,
+        })
+        return self.canned_response
 
 
 # ── Adapter factory ───────────────────────────────────────────────────────────
