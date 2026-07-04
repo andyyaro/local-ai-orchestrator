@@ -18,7 +18,7 @@ from agents.critic import CriticAgent
 from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
-from orchestrator.config_loader import get_active_profile, get_model_for_role
+from orchestrator.config_loader import get_active_profile, get_model_for_role, get_num_ctx_for_profile
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
@@ -158,6 +158,7 @@ def run_pipeline(
     log = get_logger(run_dir.name)
     metrics = RunMetrics(run_dir.name)
     pipeline_start = time.time()
+    run_num_ctx = get_num_ctx_for_profile()
 
     summary = {
         "goal": goal,
@@ -176,7 +177,7 @@ def run_pipeline(
     header("STEP 1", "SUPERVISOR — Refine goal & choose mode")
     supervisor_model = _role_model("supervisor", "general", model_main, model_fast)
     summary["role_models"]["supervisor"] = supervisor_model
-    supervisor = SupervisorAgent(model=supervisor_model, metrics=metrics)
+    supervisor = SupervisorAgent(model=supervisor_model, metrics=metrics, num_ctx=run_num_ctx)
     sup_result = _log_agent_call(
         log,
         metrics,
@@ -219,7 +220,7 @@ def run_pipeline(
         header("STEP 2", "PLANNER — Create execution plan")
         planner_model = _role_model("planner", mode, model_main, model_fast)
         summary["role_models"]["planner"] = planner_model
-        planner = PlannerAgent(model=planner_model, metrics=metrics)
+        planner = PlannerAgent(model=planner_model, metrics=metrics, num_ctx=run_num_ctx)
         plan = _log_agent_call(
             log,
             metrics,
@@ -233,7 +234,7 @@ def run_pipeline(
     header("STEP 3", "BUILDER — Write first draft")
     builder_model = _role_model("builder", mode, model_main, model_fast)
     summary["role_models"]["builder"] = builder_model
-    builder = BuilderAgent(model=builder_model, metrics=metrics)
+    builder = BuilderAgent(model=builder_model, metrics=metrics, num_ctx=run_num_ctx)
     draft = _log_agent_call(
         log,
         metrics,
@@ -252,7 +253,7 @@ def run_pipeline(
 
     judge_model = _role_model("judge", mode, model_main, model_fast)
     summary["role_models"]["judge"] = judge_model
-    judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold, metrics=metrics)
+    judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold, metrics=metrics, num_ctx=run_num_ctx)
 
     if path_config["skip_critic_fixer_loop"]:
         iteration = 1
@@ -281,7 +282,7 @@ def run_pipeline(
             )
             print(f"  [Code Verification] {first_line}")
 
-        validator_results = run_validators(refined_goal, revised, mode)
+        validator_results = run_validators(refined_goal, revised, mode, original_goal=goal)
         save(
             run_dir,
             f"loop{iteration:02d}_validators.json",
@@ -341,8 +342,8 @@ def run_pipeline(
             "fixer": fixer_model,
         })
 
-        critic = CriticAgent(model=critic_model, metrics=metrics)
-        fixer = FixerAgent(model=fixer_model, metrics=metrics)
+        critic = CriticAgent(model=critic_model, metrics=metrics, num_ctx=run_num_ctx)
+        fixer = FixerAgent(model=fixer_model, metrics=metrics, num_ctx=run_num_ctx)
 
         for iteration in range(1, effective_max_loops + 1):
             summary["iterations_run"] = iteration
@@ -402,7 +403,7 @@ def run_pipeline(
                 )
                 print(f"  [Code Verification] {first_line}")
 
-            validator_results = run_validators(refined_goal, revised, mode)
+            validator_results = run_validators(refined_goal, revised, mode, original_goal=goal)
             save(
                 run_dir,
                 f"loop{iteration:02d}_validators.json",
@@ -477,19 +478,36 @@ def run_pipeline(
     header("FINAL", "SYNTHESIZER — Polish best draft")
     synthesizer_model = _role_model("synthesizer", mode, model_main, model_fast)
     summary["role_models"]["synthesizer"] = synthesizer_model
-    synthesizer = SynthesizerAgent(model=synthesizer_model, metrics=metrics)
+    synthesizer = SynthesizerAgent(model=synthesizer_model, metrics=metrics, num_ctx=run_num_ctx)
     final_output = _log_agent_call(
         log,
         metrics,
         "synthesizer",
         synthesizer_model,
         lambda: synthesizer.run(
-            goal=refined_goal,
+            goal=goal,
             best_draft=best_draft,
             score=best_score,
             iterations=summary["iterations_run"],
         ),
     )
+
+    final_validator_results = run_validators(goal, final_output, mode)
+    save(
+        run_dir,
+        "final_validators.json",
+        json.dumps([r.__dict__ for r in final_validator_results], indent=2),
+    )
+    final_failed = [r for r in final_validator_results if not r.passed]
+    if final_failed:
+        detail = "; ".join(r.detail for r in final_failed)
+        print(f"  [Synthesizer] Final output violates constraint(s), reverting to "
+              f"pre-synthesis best draft: {detail}")
+        log.error("synthesizer", f"final output violated constraint(s), reverted "
+                  f"to best_draft: {detail}")
+        metrics.record_hard_fail("synthesizer_constraint_violation")
+        final_output = best_draft
+
     save(run_dir, "final_output.txt", final_output)
 
     summary["stop_reason"] = stop_reason

@@ -11,7 +11,7 @@ from typing import Literal
 from langgraph.graph import StateGraph, END
 
 from orchestrator.state import PipelineState
-from orchestrator.config_loader import get_model_for_role
+from orchestrator.config_loader import get_model_for_role, get_num_ctx_for_profile
 from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 from agents.supervisor import SupervisorAgent
@@ -40,8 +40,15 @@ def _role_model(state: PipelineState, role: str) -> str:
     return get_model_for_role(role, mode)
 
 
+def _num_ctx() -> int:
+    """Context window size for the active profile, so every agent's KV cache
+    footprint scales with config/models.yaml's context_sizes rather than a
+    single hardcoded default regardless of profile."""
+    return get_num_ctx_for_profile()
+
+
 def node_supervisor(state: PipelineState) -> dict:
-    agent = SupervisorAgent(model=_role_model(state, "supervisor"))
+    agent = SupervisorAgent(model=_role_model(state, "supervisor"), num_ctx=_num_ctx())
     result = agent.run(goal=state["goal"])
     _save(state["run_dir"], "00_supervisor.json", json.dumps(result, indent=2))
 
@@ -62,7 +69,7 @@ def node_supervisor(state: PipelineState) -> dict:
 
 
 def node_planner(state: PipelineState) -> dict:
-    agent = PlannerAgent(model=_role_model(state, "planner"))
+    agent = PlannerAgent(model=_role_model(state, "planner"), num_ctx=_num_ctx())
     plan = agent.run(goal=state["refined_goal"], mode=state["mode"])
     _save(state["run_dir"], "01_planner_plan.txt", plan)
     return {"plan": plan}
@@ -72,7 +79,7 @@ def node_builder(state: PipelineState) -> dict:
     # Fast path skips node_planner entirely, so no "plan" key is set yet —
     # fall back to the refined goal, matching run.py's fast-path wiring.
     plan = state.get("plan") or state["refined_goal"]
-    agent = BuilderAgent(model=_role_model(state, "builder"))
+    agent = BuilderAgent(model=_role_model(state, "builder"), num_ctx=_num_ctx())
     draft = agent.run(
         goal=state["refined_goal"],
         plan=plan,
@@ -93,7 +100,7 @@ def node_builder(state: PipelineState) -> dict:
 
 def node_critic(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
-    agent = CriticAgent(model=_role_model(state, "critic"))
+    agent = CriticAgent(model=_role_model(state, "critic"), num_ctx=_num_ctx())
     critique = agent.run(goal=state["refined_goal"], draft=state["draft"])
     _save(state["run_dir"], f"loop{iteration:02d}_critic.txt", critique)
     return {"critique": critique}
@@ -101,7 +108,7 @@ def node_critic(state: PipelineState) -> dict:
 
 def node_fixer(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
-    agent = FixerAgent(model=_role_model(state, "fixer"))
+    agent = FixerAgent(model=_role_model(state, "fixer"), num_ctx=_num_ctx())
     revised = agent.run(
         goal=state["refined_goal"],
         draft=state["draft"],
@@ -122,14 +129,16 @@ def node_judge(state: PipelineState) -> dict:
     # fall back to the builder's draft, matching run.py's fast-path wiring.
     revised = state.get("revised") or state["draft"]
 
-    validator_results = run_validators(state["refined_goal"], revised, mode)
+    validator_results = run_validators(
+        state["refined_goal"], revised, mode, original_goal=state["goal"]
+    )
     _save(
         state["run_dir"],
         f"loop{iteration:02d}_validators.json",
         json.dumps([r.__dict__ for r in validator_results], indent=2),
     )
 
-    agent = JudgeAgent(model=_role_model(state, "judge"), pass_threshold=threshold)
+    agent = JudgeAgent(model=_role_model(state, "judge"), pass_threshold=threshold, num_ctx=_num_ctx())
     verdict = agent.run(
         goal=state["refined_goal"],
         draft=revised,
@@ -196,13 +205,28 @@ def node_judge(state: PipelineState) -> dict:
 
 
 def node_synthesizer(state: PipelineState) -> dict:
-    agent = SynthesizerAgent(model=_role_model(state, "synthesizer"))
+    agent = SynthesizerAgent(model=_role_model(state, "synthesizer"), num_ctx=_num_ctx())
+    mode = state.get("mode", "general")
     final = agent.run(
-        goal=state["refined_goal"],
+        goal=state["goal"],
         best_draft=state["best_draft"],
         score=state["best_score"],
         iterations=state.get("iteration", 1) - 1,
     )
+
+    final_validator_results = run_validators(state["goal"], final, mode)
+    _save(
+        state["run_dir"],
+        "final_validators.json",
+        json.dumps([r.__dict__ for r in final_validator_results], indent=2),
+    )
+    final_failed = [r for r in final_validator_results if not r.passed]
+    if final_failed:
+        # The Synthesizer expanded an already-validated draft into an
+        # invalid final answer -- do not ship it. Fall back to the
+        # pre-synthesis best_draft, which already passed constraint
+        # validation in node_judge.
+        final = state["best_draft"]
     _save(state["run_dir"], "final_output.txt", final)
 
     summary = {
