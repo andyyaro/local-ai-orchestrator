@@ -18,11 +18,14 @@ from agents.critic import CriticAgent
 from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
-from orchestrator.config_loader import get_active_profile, get_model_for_role, get_num_ctx_for_profile
+from orchestrator.cloud_policy import should_attempt_cloud, request_human_approval
+from orchestrator.config_loader import get_active_profile, get_cloud_config, get_model_for_role, get_num_ctx_for_profile
+from orchestrator.cost_tracker import check_budget, estimate_cost, record_call
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
 from orchestrator.logger import get_logger
 from orchestrator.metrics import RunMetrics
+from orchestrator.privacy_guard import PrivacyGuardError, build_minimal_payload, guard_payload
 from orchestrator.resilience import FatalModelError
 from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import (
@@ -259,6 +262,67 @@ def _run_critic_fixer_judge_iteration(
     return revised, verdict, score, code_feedback, validator_feedback
 
 
+def _maybe_escalate_to_cloud(
+    role: str, goal: str, draft: str, allow_cloud: bool,
+    run_id: int | None = None, rubric: str = "",
+) -> str | None:
+    """
+    Attempt an optional, human-gated Phase 7 cloud escalation for `role`'s
+    step. Returns the cloud response text if a real call actually happened
+    and succeeded, or None if escalation was skipped, declined, or
+    unavailable for any reason -- callers must always be prepared to keep
+    using the local result exactly as the pipeline does without this
+    function existing at all.
+
+    All five conditions from the Phase 7 guide must hold before anything
+    beyond a print statement happens: --allow-cloud passed (`allow_cloud`),
+    cloud.enabled true and provider not "ollama" plus the role allow-listed
+    (should_attempt_cloud), the privacy guard passing, the budget check
+    passing, and interactive human approval. Missing any one silently
+    falls back to None. The real adapter (orchestrator.adapters.AnthropicAdapter)
+    still raises NotImplementedError pending model/pricing verification
+    (see that class's docstring), so this currently can never actually
+    replace a local result -- it exists as tested, gated scaffolding.
+    """
+    if not allow_cloud or not should_attempt_cloud(role):
+        return None
+
+    try:
+        payload = guard_payload(
+            role, build_minimal_payload(role, goal, draft, extra={"rubric": rubric})
+        )
+    except PrivacyGuardError as exc:
+        print(f"  [Cloud] Escalation for '{role}' blocked by privacy guard: {exc}")
+        return None
+
+    # Rough, conservative token estimate for a pre-call budget check --
+    # real tokenization differs; see cost_tracker.estimate_cost docstring.
+    input_tokens = max(1, len(payload) // 4)
+    output_tokens = input_tokens
+    estimated_cost = estimate_cost(input_tokens, output_tokens)
+
+    if not check_budget(estimated_cost):
+        print(f"  [Cloud] Escalation for '{role}' declined: estimated cost "
+              f"${estimated_cost:.4f} would exceed the configured budget.")
+        return None
+
+    if not request_human_approval(role, payload, estimated_cost):
+        print(f"  [Cloud] Escalation for '{role}' declined by user.")
+        return None
+
+    cloud_config = get_cloud_config()
+    model = cloud_config.get("model", "")
+    record_call(run_id, role, model, input_tokens, output_tokens, estimated_cost, approved=True)
+
+    from orchestrator.adapters import get_cloud_adapter
+    try:
+        adapter = get_cloud_adapter()
+        return adapter.call(model=model, prompt=payload)
+    except NotImplementedError as exc:
+        print(f"  [Cloud] Real cloud adapter is not yet implemented: {exc}")
+        return None
+
+
 def run_pipeline(
     goal: str,
     model_main: str | None,
@@ -268,6 +332,7 @@ def run_pipeline(
     min_improvement: int,
     run_dir: Path,
     path_override: str | None = None,
+    allow_cloud: bool = False,
 ) -> tuple[dict, str]:
     log = get_logger(run_dir.name)
     metrics = RunMetrics(run_dir.name)
@@ -577,6 +642,19 @@ def run_pipeline(
         ),
     )
 
+    # Phase 7: optional, human-gated cloud escalation for the synthesizer
+    # step. Off by default -- see _maybe_escalate_to_cloud's docstring for
+    # the five conditions that must all hold before anything beyond a
+    # print statement happens. Whatever comes back (local or cloud) is
+    # still subject to the same final-output constraint guard below, so a
+    # cloud response can no more bypass validation than a local one can.
+    cloud_output = _maybe_escalate_to_cloud(
+        role="synthesizer", goal=goal, draft=best_draft, allow_cloud=allow_cloud,
+    )
+    if cloud_output:
+        print("  [Cloud] Using cloud-escalated synthesizer output.")
+        final_output = cloud_output
+
     final_validator_results = run_validators(goal, final_output, mode)
     save(
         run_dir,
@@ -650,6 +728,11 @@ def main():
                         help=f"Min score gain per loop before stopping. Default: {DEFAULT_MIN_IMPROVEMENT}")
     parser.add_argument("--path", choices=["auto", "fast", "normal", "deep"], default="auto",
                         help="Pipeline path. 'auto' classifies the goal automatically. Default: auto")
+    parser.add_argument("--allow-cloud", action="store_true", default=False,
+                        help="Allow an optional, human-approved cloud escalation for "
+                             "judge/synthesizer steps. Off by default. Also requires "
+                             "cloud.enabled: true in config/models.yaml -- missing "
+                             "either one falls back to the local model result.")
     args = parser.parse_args()
 
     init_db()
@@ -681,6 +764,7 @@ def main():
             min_improvement=args.min_improvement,
             run_dir=run_dir,
             path_override=None if args.path == "auto" else args.path,
+            allow_cloud=args.allow_cloud,
         )
     except KeyboardInterrupt:
         print("\n\n[INTERRUPTED] Run stopped by user.")

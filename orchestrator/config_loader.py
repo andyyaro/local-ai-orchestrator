@@ -182,6 +182,15 @@ def get_resilience_config() -> dict:
     return cfg.get("resilience", {})
 
 
+def get_cloud_config() -> dict:
+    """Return the Phase 7 cloud section (enabled, provider, model,
+    allowed_roles, budget, pricing) from config/models.yaml. Returns an
+    empty dict (all downstream checks treat this as "disabled") if the
+    section is absent entirely."""
+    cfg = load_models_config()
+    return cfg.get("cloud", {})
+
+
 def reload_config():
     """Force reload of cached configs after editing YAML files."""
     global _models_cache, _modes_cache

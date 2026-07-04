@@ -48,8 +48,22 @@ CREATE TABLE IF NOT EXISTS iterations (
     score         INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS cloud_calls (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL,
+    run_id          INTEGER REFERENCES runs(id) ON DELETE CASCADE,
+    role            TEXT    NOT NULL,
+    provider        TEXT    NOT NULL,
+    model           TEXT    NOT NULL,
+    input_tokens    INTEGER DEFAULT 0,
+    output_tokens   INTEGER DEFAULT 0,
+    cost_usd        REAL    DEFAULT 0,
+    approved_by_user INTEGER DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_iterations_run_id ON iterations(run_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_calls_timestamp ON cloud_calls(timestamp DESC);
 """
 
 
@@ -277,3 +291,72 @@ def get_db_stats() -> dict:
         "passed_runs": pass_count,
         "average_score": round(avg_score or 0, 1),
     }
+
+
+# ── Cloud fallback (Phase 7) ──────────────────────────────────────────────────
+
+def save_cloud_call(
+    run_id: Optional[int],
+    role: str,
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float,
+    approved_by_user: bool,
+) -> int:
+    """
+    Record one cloud escalation attempt to the cloud_calls table -- the
+    audit trail for anything that ever goes out to a cloud provider.
+    `run_id` may be None if no database run record exists yet at the point
+    the call is recorded.
+    """
+    init_db()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO cloud_calls (
+            timestamp, run_id, role, provider, model,
+            input_tokens, output_tokens, cost_usd, approved_by_user
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now().isoformat(timespec="seconds"),
+            run_id,
+            role,
+            provider,
+            model,
+            int(input_tokens),
+            int(output_tokens),
+            float(cost_usd),
+            1 if approved_by_user else 0,
+        ),
+    )
+    call_id = int(cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return call_id
+
+
+def get_cloud_spend(period: str) -> float:
+    """
+    Sum cost_usd from cloud_calls for the current "daily" or "monthly"
+    window, based on each row's ISO-format timestamp prefix. Returns 0.0
+    if there are no matching rows (including when the table is empty).
+    """
+    if period not in ("daily", "monthly"):
+        raise ValueError(f"Unknown period '{period}'. Valid options: daily, monthly")
+
+    now = datetime.now()
+    prefix = now.strftime("%Y-%m-%d") if period == "daily" else now.strftime("%Y-%m")
+
+    init_db()
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0) FROM cloud_calls WHERE timestamp LIKE ?",
+        (f"{prefix}%",),
+    ).fetchone()
+    conn.close()
+    return float(row[0])
