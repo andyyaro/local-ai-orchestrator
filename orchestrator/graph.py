@@ -10,8 +10,10 @@ from typing import Literal
 
 from langgraph.graph import StateGraph, END
 
+from memory.embeddings import EmbeddingModelUnavailableError
+from memory.retriever import retrieve_context
 from orchestrator.state import PipelineState
-from orchestrator.config_loader import get_model_for_role, get_num_ctx_for_profile
+from orchestrator.config_loader import get_memory_config, get_model_for_role, get_num_ctx_for_profile
 from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import (
     run_validators,
@@ -61,8 +63,21 @@ def node_supervisor(state: PipelineState) -> dict:
     path = classify_path(refined_goal, mode, override=state.get("path_override"))
     path_config = get_path_config(path)
 
+    # Phase 9: optional retrieval over prior run history and project
+    # files, off by default (memory.retrieval_enabled). Never blocks the
+    # pipeline if the embedding model isn't pulled -- retrieval is an
+    # opt-in enhancement, not a hard requirement to produce output.
+    retrieved_context = ""
+    if get_memory_config().get("retrieval_enabled", False):
+        try:
+            retrieved_context = retrieve_context(refined_goal)
+        except EmbeddingModelUnavailableError:
+            retrieved_context = ""
+    augmented_goal = f"{retrieved_context}\n\n{refined_goal}" if retrieved_context else refined_goal
+
     return {
         "refined_goal": refined_goal,
+        "augmented_goal": augmented_goal,
         "mode": mode,
         "path": path,
         "skip_planner": path_config["skip_planner"],
@@ -74,7 +89,7 @@ def node_supervisor(state: PipelineState) -> dict:
 
 def node_planner(state: PipelineState) -> dict:
     agent = PlannerAgent(model=_role_model(state, "planner"), num_ctx=_num_ctx())
-    plan = agent.run(goal=state["refined_goal"], mode=state["mode"])
+    plan = agent.run(goal=state.get("augmented_goal") or state["refined_goal"], mode=state["mode"])
     _save(state["run_dir"], "01_planner_plan.txt", plan)
     return {"plan": plan}
 
@@ -85,7 +100,7 @@ def node_builder(state: PipelineState) -> dict:
     plan = state.get("plan") or state["refined_goal"]
     agent = BuilderAgent(model=_role_model(state, "builder"), num_ctx=_num_ctx())
     draft = agent.run(
-        goal=state["refined_goal"],
+        goal=state.get("augmented_goal") or state["refined_goal"],
         plan=plan,
         mode=state.get("mode", "general"),
     )

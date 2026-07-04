@@ -18,8 +18,16 @@ from agents.critic import CriticAgent
 from agents.fixer import FixerAgent
 from agents.judge import JudgeAgent
 from agents.synthesizer import SynthesizerAgent
+from memory.embeddings import EmbeddingModelUnavailableError
+from memory.retriever import retrieve_context
 from orchestrator.cloud_policy import should_attempt_cloud, request_human_approval
-from orchestrator.config_loader import get_active_profile, get_cloud_config, get_model_for_role, get_num_ctx_for_profile
+from orchestrator.config_loader import (
+    get_active_profile,
+    get_cloud_config,
+    get_memory_config,
+    get_model_for_role,
+    get_num_ctx_for_profile,
+)
 from orchestrator.cost_tracker import check_budget, estimate_cost, record_call
 from orchestrator.database import save_run, init_db
 from orchestrator.code_runner import verify_draft_code, verification_failed
@@ -420,6 +428,21 @@ def run_pipeline(
         threshold=effective_threshold,
     )
 
+    # Phase 9: optional retrieval over prior run history and project
+    # files, off by default (memory.retrieval_enabled). Never blocks the
+    # pipeline if the embedding model isn't pulled -- retrieval is an
+    # opt-in enhancement, not a hard requirement to produce output.
+    retrieved_context = ""
+    if get_memory_config().get("retrieval_enabled", False):
+        try:
+            retrieved_context = retrieve_context(refined_goal)
+            if retrieved_context:
+                print(f"    [Memory] Retrieved context ({len(retrieved_context)} chars) "
+                      "from prior runs/files.")
+        except EmbeddingModelUnavailableError as exc:
+            print(f"    [Memory] Retrieval skipped: {exc}")
+    augmented_goal = f"{retrieved_context}\n\n{refined_goal}" if retrieved_context else refined_goal
+
     if path_config["skip_planner"]:
         plan = refined_goal
         planner_model = _role_model("planner", mode, model_main, model_fast)
@@ -435,7 +458,7 @@ def run_pipeline(
             metrics,
             "planner",
             planner_model,
-            lambda: planner.run(goal=refined_goal, mode=mode),
+            lambda: planner.run(goal=augmented_goal, mode=mode),
             on_step=on_step,
         )
         save(run_dir, "01_planner_plan.txt", plan)
@@ -450,7 +473,7 @@ def run_pipeline(
         metrics,
         "builder",
         builder_model,
-        lambda: builder.run(goal=refined_goal, plan=plan, mode=mode),
+        lambda: builder.run(goal=augmented_goal, plan=plan, mode=mode),
         on_step=on_step,
     )
     save(run_dir, "02_builder_draft_v0.txt", draft)

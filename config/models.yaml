@@ -113,6 +113,14 @@ context_sizes:
 
 memory:
   keep_alive: "5m"
+  # Phase 9 — retrieval, opt-in and off by default. Retrieval changes what
+  # context the model sees, so it must never activate silently. Requires
+  # `ollama pull nomic-embed-text` locally before enabling -- this project
+  # never pulls a model automatically.
+  retrieval_enabled: false
+  embedding_model: "nomic-embed-text"
+  top_k: 5
+  chunk_size_tokens: 512
 
 resilience:
   timeouts:
