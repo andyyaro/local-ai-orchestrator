@@ -8,6 +8,10 @@ pyyaml>=6.0.1
 # given machine (see that module's _try_sqlite_vec_similarity()).
 sqlite-vec>=0.1.0
 
+# Phase 10 — HTML-to-text conversion for deep research's fetcher, so raw
+# HTML/script tags never reach a prompt.
+beautifulsoup4>=4.12.0
+
 # LangGraph and LangChain Ollama integration
 langgraph>=0.2.0
 langchain-ollama>=0.1.0
