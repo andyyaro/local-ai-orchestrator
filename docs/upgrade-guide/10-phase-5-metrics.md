@@ -134,6 +134,10 @@ Create `tests/test_metrics.py` covering:
   returns a well-formed dict with zeroed counts, not an error — a fast-path
   run with no retries or fallbacks should still produce a clean summary.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

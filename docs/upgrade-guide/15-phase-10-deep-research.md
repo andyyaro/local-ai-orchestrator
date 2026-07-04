@@ -206,6 +206,10 @@ constructed prompt-injection string.
 All tests in this phase must use `MockSearchProvider` and mocked/fake fetch
 responses — never a real network call.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

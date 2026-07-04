@@ -116,6 +116,10 @@ git push -u origin phase-1-ci-foundation
 None new — Phase 1 does not add pipeline logic, it wires up execution of the
 tests that already exist (and any future ones).
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

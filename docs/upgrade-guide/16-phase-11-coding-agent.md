@@ -195,6 +195,10 @@ repo:
 - `coding_agent_loop` stops at `max_iterations` and reports the remaining
   failure when a mocked model response never produces a passing fix.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

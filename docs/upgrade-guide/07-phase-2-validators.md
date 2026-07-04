@@ -192,6 +192,10 @@ Create `tests/test_validators.py` covering at minimum:
   containing "in exactly 120 words" and a draft of, say, 300 words, must
   produce a failing `ValidationResult` for `"word_limit"`.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

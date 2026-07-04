@@ -130,6 +130,10 @@ your own notes — do not commit it, since `runs/` is git-ignored on purpose).
 None. Phase 0 does not add new test coverage — it confirms existing coverage
 passes.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

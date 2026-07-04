@@ -171,6 +171,10 @@ def test_eval_suite_imports():
     import eval.scenarios  # noqa: F401
 ```
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash
