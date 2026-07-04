@@ -5,6 +5,7 @@ Loads and caches configuration from config/models.yaml and config/modes.yaml.
 All pipeline code should use these helpers instead of reading YAML directly.
 """
 
+import re
 from pathlib import Path
 import yaml
 
@@ -21,6 +22,12 @@ VALID_ROLES = {
     "judge",
     "synthesizer",
 }
+
+# Same heuristic tests/test_model_config.py uses to enforce "at most one
+# distinct 14B-class model per profile" -- reused here so mode_overrides
+# can't silently reintroduce a second resident 14B-class family alongside
+# the active profile's own (see get_effective_role_models()).
+_FOURTEEN_B_PATTERN = re.compile(r"14b|13b", re.IGNORECASE)
 
 
 def load_models_config() -> dict:
@@ -66,21 +73,58 @@ def get_profile_models(profile_name: str | None = None) -> dict:
     return profiles[profile]
 
 
+def get_effective_role_models(mode: str = "general", profile_name: str | None = None) -> dict:
+    """
+    Return the full role->model mapping for `profile_name` (default: the
+    active profile) with `mode`'s mode_overrides applied, corrected so at
+    most one distinct 14B-class model family is used across all seven
+    roles for this profile+mode combination.
+
+    mode_overrides alone can otherwise reintroduce the multi-14B-model
+    swap problem Phase 6 fixed at the profile level: e.g.
+    active_profile=serious + mode=coding would, without this correction,
+    switch builder/fixer to qwen2.5-coder:14b via the override while
+    judge/synthesizer stayed on serious's qwen2.5:14b -- two resident
+    14B-class families for that one run, even though each of "serious"
+    and the override individually look fine in isolation.
+
+    When an override introduces a second 14B-class family, every other
+    role currently on a (different) 14B-class model is brought in line
+    with the override's model, since the override is the more
+    task-relevant choice (e.g. a coder-specific model for a
+    coding-classified goal).
+    """
+    cfg = load_models_config()
+    effective = dict(get_profile_models(profile_name))
+    overrides = cfg.get("mode_overrides", {}).get(mode, {})
+    effective.update(overrides)
+
+    fourteen_b_models = {
+        model for model in effective.values() if _FOURTEEN_B_PATTERN.search(model)
+    }
+    if len(fourteen_b_models) > 1:
+        override_14b = {
+            model for model in overrides.values() if _FOURTEEN_B_PATTERN.search(model)
+        }
+        target = next(iter(override_14b)) if override_14b else next(iter(fourteen_b_models))
+        for role, model in effective.items():
+            if _FOURTEEN_B_PATTERN.search(model) and model != target:
+                effective[role] = target
+
+    return effective
+
+
 def get_model_for_role(role: str, mode: str = "general") -> str:
     """
     Return the model name for a given agent role and optional workflow mode.
-    Checks mode_overrides first, then falls back to the active profile.
+    Checks mode_overrides first, then falls back to the active profile, with
+    get_effective_role_models() ensuring the two never combine into more
+    than one resident 14B-class model family.
     """
     if role not in VALID_ROLES:
         raise ValueError(f"Unknown model role '{role}'. Valid roles: {sorted(VALID_ROLES)}")
 
-    cfg = load_models_config()
-    mode_overrides = cfg.get("mode_overrides", {}).get(mode, {})
-    if role in mode_overrides:
-        return mode_overrides[role]
-
-    models = get_profile_models()
-    return models.get(role, "llama3.2:3b")
+    return get_effective_role_models(mode).get(role, "llama3.2:3b")
 
 
 def get_ollama_base_url() -> str:

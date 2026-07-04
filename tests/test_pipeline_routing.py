@@ -213,3 +213,104 @@ def test_pipeline_records_real_resilience_events_in_run_summary(tmp_path, monkey
     assert metrics["fallbacks"] == 0
     assert metrics["timeout_events"] == 0
     assert metrics["per_agent"]["builder"]["calls"] == 1
+
+
+# ── Phase 6b regression: Supervisor dropping a hard constraint ─────────────────
+#
+# The exact bug this phase exists to fix: the original user goal said
+# "50-word summary," the Supervisor's refined_goal dropped that constraint
+# entirely, and because validators previously ran only against refined_goal,
+# a 300+ word draft sailed through with a passing Judge score. This test
+# reproduces that scenario end to end and asserts the run now honestly
+# reports failure instead of silently passing.
+
+def test_pipeline_fails_when_supervisor_drops_original_word_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": (
+                "Explain the physiological and psychological importance of "
+                "sleep in humans, with specific examples of how lack of "
+                "sleep affects cognitive function."
+            ),
+            "mode": "writing",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": " ".join(["word"] * 300),
+    )
+    monkeypatch.setattr(CriticAgent, "run", _fail_if_called)
+    monkeypatch.setattr(FixerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: best_draft,
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="Write a 50-word summary of why sleep matters.",
+        model_main=None,
+        model_fast=None,
+        max_loops=None,
+        threshold=None,
+        min_improvement=5,
+        run_dir=run_dir,
+    )
+
+    assert summary["passed"] is False
+    assert summary["final_score"] == 0
+    assert "constraint_violation" in summary["stop_reason"]
+    assert summary["metrics"]["hard_fails"].get("constraint_violation") == 1
+
+
+# ── Phase 6b regression: Synthesizer expanding a valid draft into an invalid one ──
+
+def test_pipeline_reverts_final_output_when_synthesizer_violates_constraint(tmp_path, monkeypatch):
+    compliant_draft = " ".join(["word"] * 20)
+    bloated_final_output = " ".join(["word"] * 300)
+
+    monkeypatch.setattr(
+        SupervisorAgent, "run",
+        lambda self, goal: {
+            "refined_goal": "Write a summary of the water cycle in exactly 20 words.",
+            "mode": "writing",
+        },
+    )
+    monkeypatch.setattr(PlannerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(
+        BuilderAgent, "run",
+        lambda self, goal, plan, mode="general": compliant_draft,
+    )
+    monkeypatch.setattr(CriticAgent, "run", _fail_if_called)
+    monkeypatch.setattr(FixerAgent, "run", _fail_if_called)
+    monkeypatch.setattr(JudgeAgent, "run", _passing_verdict)
+    monkeypatch.setattr(
+        SynthesizerAgent, "run",
+        lambda self, goal, best_draft, score, iterations: bloated_final_output,
+    )
+    monkeypatch.setattr(run_module, "save_run", lambda **kwargs: 1)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    summary, final_output = run_module.run_pipeline(
+        goal="Write a summary of the water cycle in exactly 20 words.",
+        model_main=None,
+        model_fast=None,
+        max_loops=None,
+        threshold=None,
+        min_improvement=5,
+        run_dir=run_dir,
+    )
+
+    assert final_output == compliant_draft
+    assert (run_dir / "final_output.txt").read_text(encoding="utf-8") == compliant_draft
+    assert summary["metrics"]["hard_fails"].get("synthesizer_constraint_violation") == 1
+    # The loop itself still succeeded -- only the Synthesizer's output was rejected.
+    assert summary["passed"] is True
