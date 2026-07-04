@@ -168,6 +168,10 @@ selected, the Planner agent is not invoked and no `01_planner_plan.txt`
 artifact is written, and the Critic/Fixer agents are not invoked for a
 single-iteration fast-path run.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

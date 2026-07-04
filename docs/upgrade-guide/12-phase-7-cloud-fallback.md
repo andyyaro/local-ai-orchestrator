@@ -185,15 +185,35 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
 );
 ```
 
-7. Implement `AnthropicAdapter.call()` in `orchestrator/adapters.py` for
-   real, but only ever invoked after steps 3–6 have already passed (policy
-   allowed, privacy guard passed, budget check passed, human approved). Read
-   the API key from `.env` (already git-ignored) via the existing project
-   convention — never hardcode it, never log it, never include it in any
-   payload preview. Also add a `MockCloudAdapter` (in `adapters.py` or a
-   test-only module) that returns a canned, deterministic response with no
-   network call at all — this is what every test and CI use, never the real
-   adapter.
+7. ⚠️ **Before implementing a real adapter, verify the model ID and pricing
+   directly against the provider's own official documentation** —
+   `config/models.yaml`'s `cloud.model: "claude-sonnet-5"` and the
+   `cloud.pricing` block in step 2 above are drawn from the research report
+   at `docs/research/compass_artifact_wf-f11fd32d-...md`, and that report's
+   own text already flags that its model names and prices should be
+   re-verified, not trusted as fact. A model ID or price that's wrong isn't
+   a cosmetic bug here — it's either a broken API call or an incorrect cost
+   estimate feeding directly into `cost_tracker.py`'s budget enforcement. Do
+   not copy the model ID or pricing numbers from this guide, this research
+   report, or any other secondhand source into real code without checking
+   them yourself against the provider's current published docs first.
+
+   **If you have not personally verified the current model ID and pricing
+   against the provider's official documentation, stop at the
+   `MockCloudAdapter` and do not implement a real adapter in this session.**
+   Report back that real-adapter implementation is deferred pending
+   verification, rather than shipping a call that might target a
+   deprecated model ID or budget-check against stale prices.
+
+   Once verified, implement `AnthropicAdapter.call()` in
+   `orchestrator/adapters.py` for real, but only ever invoked after steps
+   3–6 have already passed (policy allowed, privacy guard passed, budget
+   check passed, human approved). Read the API key from `.env` (already
+   git-ignored) via the existing project convention — never hardcode it,
+   never log it, never include it in any payload preview. Also add a
+   `MockCloudAdapter` (in `adapters.py` or a test-only module) that returns
+   a canned, deterministic response with no network call at all — this is
+   what every test and CI use, never the real adapter.
 
 8. Wire an optional escalation call site into `run.py`. Keep this narrow: a
    new `--allow-cloud` CLI flag (default off) is required *in addition to*
@@ -224,6 +244,10 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
 - All three test files must use `MockCloudAdapter` or no adapter at all —
   never a real network call, never a real API key, even one from a test
   fixture `.env`.
+
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
 
 ## Commands to run
 
@@ -333,10 +357,17 @@ Implement the following:
    output_tokens), get_spend(period), check_budget(estimated_cost_usd), and
    record_call(...) writing to a new cloud_calls table.
 5. Add a cloud_calls table to orchestrator/database.py's SCHEMA.
-6. Implement AnthropicAdapter.call() for real in orchestrator/adapters.py,
-   reading the API key only from .env, never logging or previewing it. Add
-   a MockCloudAdapter with a canned deterministic response and no network
-   call, for tests only.
+6. Add a MockCloudAdapter with a canned deterministic response and no
+   network call, for tests only. Before implementing AnthropicAdapter.call()
+   for real, verify the current model ID and pricing directly against the
+   provider's official documentation -- do not copy the model ID or pricing
+   numbers from this guide or the research report without checking them
+   yourself first. If you have not verified them in this session, stop
+   here: implement only MockCloudAdapter, do not implement a real
+   AnthropicAdapter.call(), and report that real-adapter implementation is
+   deferred pending verification. If you have verified them, implement
+   AnthropicAdapter.call() for real in orchestrator/adapters.py, reading the
+   API key only from .env, never logging or previewing it.
 7. Add an --allow-cloud CLI flag to run.py (default off). A real cloud call
    must require ALL of: cloud.enabled true in config, --allow-cloud passed,
    should_attempt_cloud() true for that role, check_budget() passing, and

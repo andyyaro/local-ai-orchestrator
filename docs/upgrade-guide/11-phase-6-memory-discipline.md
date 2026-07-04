@@ -225,6 +225,10 @@ chmod +x scripts/local_acceptance.sh
 - `get_num_ctx_for_profile()` (or equivalent) returns a smaller value for
   `low_memory` than for `serious`.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

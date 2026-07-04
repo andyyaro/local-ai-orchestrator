@@ -154,6 +154,10 @@ out of scope for this phase). Instead:
   `python -c "import app.streamlit_app"` succeeds with no import errors
   (this may already be covered by Phase 1's CI workflow).
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

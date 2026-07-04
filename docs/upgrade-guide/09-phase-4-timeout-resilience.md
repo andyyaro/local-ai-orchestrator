@@ -202,6 +202,10 @@ Create `tests/test_resilience.py` covering:
 - No test should sleep for real multi-second delays — use a short,
   test-only wait value or mock `time.sleep` so the suite stays fast.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash

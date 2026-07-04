@@ -193,6 +193,10 @@ Create `tests/test_memory.py` covering:
 - `retrieve_context` respects the configured `top_k` and never returns more
   chunks than requested.
 
+## Verification
+
+Run the checks below and confirm they match the expected output that follows.
+
 ## Commands to run
 
 ```bash
