@@ -70,6 +70,13 @@ def test_fast_path_skips_planner_and_critic_fixer(tmp_path, monkeypatch):
     assert not (run_dir / "01_planner_plan.txt").exists()
     assert final_output == "Final polished output."
 
+    metrics = summary["metrics"]
+    assert metrics["path"] == "fast"
+    assert "planner" not in metrics["per_agent"]
+    assert "critic" not in metrics["per_agent"]
+    assert "fixer" not in metrics["per_agent"]
+    assert metrics["per_agent"]["judge"]["calls"] == 1
+
 
 def test_normal_path_runs_planner_and_critic_fixer_loop(tmp_path, monkeypatch):
     monkeypatch.setattr(
@@ -118,3 +125,10 @@ def test_normal_path_runs_planner_and_critic_fixer_loop(tmp_path, monkeypatch):
     assert (run_dir / "01_planner_plan.txt").exists()
     assert (run_dir / "loop01_critic.txt").exists()
     assert (run_dir / "loop01_fixer.txt").exists()
+
+    metrics = summary["metrics"]
+    assert metrics["path"] == "normal"
+    assert metrics["per_agent"]["planner"]["calls"] == 1
+    assert metrics["per_agent"]["critic"]["calls"] == 1
+    assert metrics["per_agent"]["fixer"]["calls"] == 1
+    assert "total_elapsed_ms" in metrics

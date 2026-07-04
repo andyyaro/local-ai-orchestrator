@@ -85,7 +85,7 @@ def get_timeout_for_model(model: str) -> int:
 
 
 def call_with_resilience(model: str, prompt: str, temperature: float,
-                         num_ctx: int, role: str) -> str:
+                         num_ctx: int, role: str, metrics=None) -> str:
     """
     Call `model` through the active adapter with failure-aware handling:
       - ModelConnectionError: retry once, after a short fixed wait.
@@ -94,6 +94,11 @@ def call_with_resilience(model: str, prompt: str, temperature: float,
       - ModelHTTPError: fail fast (not transient; a cloud-backoff branch is
         reserved for Phase 7's cloud adapter but unreachable via Ollama).
     Raises FatalModelError if all applicable retries/fallbacks fail.
+
+    `metrics`, if given, is a Phase 5 RunMetrics instance (or any object with
+    the same record_retry/record_fallback/record_timeout_event methods) used
+    to report these events. Untyped here to avoid resilience.py importing
+    orchestrator.metrics at all.
     """
     from orchestrator.adapters import get_adapter
 
@@ -107,6 +112,8 @@ def call_with_resilience(model: str, prompt: str, temperature: float,
         return adapter.call(model=model, prompt=prompt, temperature=temperature,
                             num_ctx=num_ctx, timeout=timeout)
     except ModelConnectionError as exc:
+        if metrics is not None:
+            metrics.record_retry(role, model, "connection")
         if max_local_retries < 1:
             raise FatalModelError(
                 f"{role}: connection to '{model}' failed "
@@ -122,11 +129,15 @@ def call_with_resilience(model: str, prompt: str, temperature: float,
                 f"also failed: {retry_exc}"
             ) from retry_exc
     except ModelTimeoutError as exc:
+        if metrics is not None:
+            metrics.record_timeout_event(role, model)
         if not fallback_model or fallback_model == model:
             raise FatalModelError(
                 f"{role}: '{model}' timed out and no distinct fallback "
                 f"model is configured: {exc}"
             ) from exc
+        if metrics is not None:
+            metrics.record_fallback(role, model, fallback_model)
         fallback_timeout = get_timeout_for_model(fallback_model)
         try:
             return adapter.call(model=fallback_model, prompt=prompt,
