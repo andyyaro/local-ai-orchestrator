@@ -279,11 +279,12 @@ def run_pipeline(
             print("  [Code Verification] Running extracted Python code...")
             code_feedback = verify_draft_code(revised)
             code_failed = verification_failed(code_feedback)
-            save(run_dir, f"loop{iteration:02d}_code_verification.txt", code_feedback)
+            code_run_file = f"loop{iteration:02d}_code_run.txt"
+            save(run_dir, code_run_file, code_feedback)
             summary["code_verification"].append({
                 "iteration": iteration,
                 "failed": code_failed,
-                "feedback_file": f"loop{iteration:02d}_code_verification.txt",
+                "feedback_file": code_run_file,
             })
             first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
             log.code_verification(
