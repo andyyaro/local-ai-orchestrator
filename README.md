@@ -471,16 +471,17 @@ pressure stays green.
 
 ## Screenshots
 
-Dashboard screenshots coming soon.
+### Minimal Streamlit dashboard
 
-<!--
-Add after taking screenshots:
+![Local AI Orchestrator dashboard](docs/screenshot_dashboard_1.jpeg)
 
-![Dashboard](docs/screenshot_dashboard.png)
-![Score progression](docs/screenshot_scores.png)
--->
+### Run controls and local model settings
 
----
+![Local AI Orchestrator controls](docs/screenshot_dashboard_2.jpeg)
+
+### Run history and output review
+
+![Local AI Orchestrator run history](docs/screenshot_dashboard_3.jpeg)
 
 ## Limitations
 
