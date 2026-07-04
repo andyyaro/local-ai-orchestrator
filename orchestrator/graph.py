@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END
 
 from orchestrator.state import PipelineState
 from orchestrator.config_loader import get_model_for_role
+from orchestrator.router import classify_path, get_path_config
 from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 from agents.supervisor import SupervisorAgent
 from agents.planner import PlannerAgent
@@ -43,9 +44,20 @@ def node_supervisor(state: PipelineState) -> dict:
     agent = SupervisorAgent(model=_role_model(state, "supervisor"))
     result = agent.run(goal=state["goal"])
     _save(state["run_dir"], "00_supervisor.json", json.dumps(result, indent=2))
+
+    refined_goal = result["refined_goal"]
+    mode = result["mode"]
+    path = classify_path(refined_goal, mode, override=state.get("path_override"))
+    path_config = get_path_config(path)
+
     return {
-        "refined_goal": result["refined_goal"],
-        "mode": result["mode"],
+        "refined_goal": refined_goal,
+        "mode": mode,
+        "path": path,
+        "skip_planner": path_config["skip_planner"],
+        "skip_critic_fixer_loop": path_config["skip_critic_fixer_loop"],
+        "max_loops": state.get("max_loops") or path_config["max_loops"],
+        "threshold": state.get("threshold") or path_config["threshold"],
     }
 
 
@@ -57,10 +69,13 @@ def node_planner(state: PipelineState) -> dict:
 
 
 def node_builder(state: PipelineState) -> dict:
+    # Fast path skips node_planner entirely, so no "plan" key is set yet —
+    # fall back to the refined goal, matching run.py's fast-path wiring.
+    plan = state.get("plan") or state["refined_goal"]
     agent = BuilderAgent(model=_role_model(state, "builder"))
     draft = agent.run(
         goal=state["refined_goal"],
-        plan=state["plan"],
+        plan=plan,
         mode=state.get("mode", "general"),
     )
     _save(state["run_dir"], "02_builder_draft_v0.txt", draft)
@@ -103,7 +118,11 @@ def node_judge(state: PipelineState) -> dict:
     threshold = state.get("threshold", 70)
     mode = state.get("mode", "general")
 
-    validator_results = run_validators(state["refined_goal"], state["revised"], mode)
+    # Fast path skips node_critic/node_fixer, so no "revised" key is set yet —
+    # fall back to the builder's draft, matching run.py's fast-path wiring.
+    revised = state.get("revised") or state["draft"]
+
+    validator_results = run_validators(state["refined_goal"], revised, mode)
     _save(
         state["run_dir"],
         f"loop{iteration:02d}_validators.json",
@@ -113,7 +132,7 @@ def node_judge(state: PipelineState) -> dict:
     agent = JudgeAgent(model=_role_model(state, "judge"), pass_threshold=threshold)
     verdict = agent.run(
         goal=state["refined_goal"],
-        draft=state["revised"],
+        draft=revised,
         iteration=iteration,
         mode=mode,
     )
@@ -125,19 +144,27 @@ def node_judge(state: PipelineState) -> dict:
     scores = state.get("scores", []) + [score]
 
     best_score = state.get("best_score", 0)
-    best_draft = state.get("best_draft", state["revised"])
+    best_draft = state.get("best_draft", revised)
     if score > best_score:
         best_score = score
-        best_draft = state["revised"]
+        best_draft = revised
         _save(state["run_dir"], "best_draft.txt", best_draft)
 
     max_loops = state.get("max_loops", 3)
     min_improvement = state.get("min_improvement", 5)
     previous_score = state.get("previous_score", 0)
+    skip_critic_fixer_loop = state.get("skip_critic_fixer_loop", False)
     should_continue = True
     stop_reason = ""
 
-    if verdict["pass"]:
+    if skip_critic_fixer_loop:
+        should_continue = False
+        stop_reason = (
+            f"passed (score {score} >= threshold {threshold})"
+            if verdict["pass"]
+            else f"fast path single iteration complete (score {score})"
+        )
+    elif verdict["pass"]:
         should_continue = False
         stop_reason = f"passed (score {score} >= threshold {threshold})"
     elif iteration >= max_loops:
@@ -161,7 +188,7 @@ def node_judge(state: PipelineState) -> dict:
         "best_score": best_score,
         "best_draft": best_draft,
         "previous_score": score,
-        "draft": state["revised"],
+        "draft": revised,
         "iteration": iteration + 1,
         "should_continue": should_continue,
         "stop_reason": stop_reason,
@@ -182,6 +209,7 @@ def node_synthesizer(state: PipelineState) -> dict:
         "goal": state["goal"],
         "refined_goal": state["refined_goal"],
         "mode": state.get("mode", "general"),
+        "path": state.get("path", "normal"),
         "model_main_override": state.get("model_main"),
         "model_fast_override": state.get("model_fast"),
         "iterations_run": state.get("iteration", 1) - 1,
@@ -196,7 +224,21 @@ def node_synthesizer(state: PipelineState) -> dict:
     return {"final_output": final}
 
 
+def route_after_supervisor(state: PipelineState) -> Literal["planner", "builder"]:
+    if state.get("skip_planner", False):
+        return "builder"
+    return "planner"
+
+
+def route_after_builder(state: PipelineState) -> Literal["critic", "judge"]:
+    if state.get("skip_critic_fixer_loop", False):
+        return "judge"
+    return "critic"
+
+
 def route_after_judge(state: PipelineState) -> Literal["critic", "synthesizer"]:
+    if state.get("skip_critic_fixer_loop", False):
+        return "synthesizer"
     if state.get("should_continue", False):
         return "critic"
     return "synthesizer"
@@ -213,9 +255,18 @@ def build_graph() -> StateGraph:
     graph.add_node("judge", node_judge)
     graph.add_node("synthesizer", node_synthesizer)
 
-    graph.add_edge("supervisor", "planner")
+    graph.add_conditional_edges(
+        "supervisor",
+        route_after_supervisor,
+        {"planner": "planner", "builder": "builder"},
+    )
     graph.add_edge("planner", "builder")
-    graph.add_edge("builder", "critic")
+
+    graph.add_conditional_edges(
+        "builder",
+        route_after_builder,
+        {"critic": "critic", "judge": "judge"},
+    )
     graph.add_edge("critic", "fixer")
     graph.add_edge("fixer", "judge")
 

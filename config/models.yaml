@@ -58,6 +58,23 @@ mode_overrides:
     builder: "qwen2.5-coder:14b"
     fixer: "qwen2.5-coder:14b"
 
+paths:
+  fast:
+    skip_planner: true
+    skip_critic_fixer_loop: true
+    max_loops: 1
+    threshold: 60
+  normal:
+    skip_planner: false
+    skip_critic_fixer_loop: false
+    max_loops: 2
+    threshold: 70
+  deep:
+    skip_planner: false
+    skip_critic_fixer_loop: false
+    max_loops: 4
+    threshold: 80
+
 defaults:
   temperature: 0.7
   num_ctx: 4096
