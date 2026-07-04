@@ -2,13 +2,15 @@
 app/streamlit_app.py
 
 Streamlit dashboard for the Local AI Orchestrator.
-Wraps the same pipeline agents as run.py in a local web interface.
+Calls run.py's run_pipeline() directly (Phase 8) instead of maintaining a
+second, independent copy of the pipeline -- every phase wired into
+run_pipeline() (validators, routing, resilience, metrics, memory
+discipline, cloud gating) applies here automatically.
 
 Run with:
     streamlit run app/streamlit_app.py
 """
 
-import json
 import sys
 import threading
 import time
@@ -23,16 +25,10 @@ ROOT = Path(__file__).parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agents.builder import BuilderAgent
-from agents.critic import CriticAgent
-from agents.fixer import FixerAgent
-from agents.judge import JudgeAgent
-from agents.planner import PlannerAgent
-from agents.supervisor import SupervisorAgent
-from agents.synthesizer import SynthesizerAgent
-from orchestrator.code_runner import verification_failed, verify_draft_code
-from orchestrator.config_loader import get_active_profile, get_model_for_role
-from orchestrator.database import get_db_stats, load_all_runs, load_run_by_id, save_run
+from run import run_pipeline
+from orchestrator.cloud_policy import is_cloud_enabled
+from orchestrator.config_loader import get_active_profile
+from orchestrator.database import get_db_stats, load_all_runs, load_run_by_id
 
 RUNS_DIR = ROOT / "runs"
 RUNS_DIR.mkdir(exist_ok=True)
@@ -40,9 +36,6 @@ RUNS_DIR.mkdir(exist_ok=True)
 DEFAULT_MAX_LOOPS = 3
 DEFAULT_THRESHOLD = 70
 DEFAULT_MIN_IMPROVEMENT = 5
-
-FAST_ROLES = {"supervisor", "planner", "critic"}
-MAIN_ROLES = {"builder", "fixer", "synthesizer"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,114 +48,9 @@ def make_run_dir() -> Path:
     return run_dir
 
 
-def save(run_dir: Path, filename: str, content: str):
-    """Save one pipeline artifact into the active run folder."""
-    (run_dir / filename).write_text(content, encoding="utf-8")
-
-
-def score_bar(score: int, width: int = 40) -> str:
-    filled = int(score / 100 * width)
-    return "█" * filled + "░" * (width - filled)
-
-
 def normalize_override(value: str) -> str | None:
     """Convert the UI's config-driven option into the None override used by code."""
     return None if value == "config-driven" else value
-
-
-def role_model(
-    role: str,
-    mode: str,
-    model_main: str | None,
-    model_fast: str | None,
-    model_judge: str | None,
-) -> str:
-    """Return the model for a role, honoring UI overrides when supplied."""
-    if model_judge and role == "judge":
-        return model_judge
-    if model_fast and role in FAST_ROLES:
-        return model_fast
-    if model_main and role in MAIN_ROLES:
-        return model_main
-    if model_main and role == "judge":
-        return model_main
-    return get_model_for_role(role, mode)
-
-
-def emit_step(event_queue: Queue, agent: str, status: str, output: str = ""):
-    event_queue.put({
-        "type": "step",
-        "agent": agent,
-        "status": status,
-        "output": output,
-    })
-
-
-def collect_iterations(run_dir: Path, scores: list[int]) -> list[dict]:
-    """Load saved loop artifacts so they can be stored in SQLite."""
-    iterations_data = []
-    for i, score in enumerate(scores, start=1):
-        critique_path = run_dir / f"loop{i:02d}_critic.txt"
-        fixer_path = run_dir / f"loop{i:02d}_fixer.txt"
-        judge_path = run_dir / f"loop{i:02d}_judge.json"
-        iterations_data.append({
-            "iteration": i,
-            "critique": (
-                critique_path.read_text(encoding="utf-8")
-                if critique_path.exists()
-                else ""
-            ),
-            "revised_draft": (
-                fixer_path.read_text(encoding="utf-8")
-                if fixer_path.exists()
-                else ""
-            ),
-            "verdict": (
-                json.loads(judge_path.read_text(encoding="utf-8"))
-                if judge_path.exists()
-                else {}
-            ),
-            "score": score,
-        })
-    return iterations_data
-
-
-def apply_code_verification_to_verdict(verdict: dict, code_feedback: str) -> dict:
-    """Force a hard fail when coding-mode verification finds broken code."""
-    if not code_feedback or not verification_failed(code_feedback):
-        return verdict
-
-    hard_fails = verdict.get("hard_fails", [])
-    if not isinstance(hard_fails, list):
-        hard_fails = []
-    if "broken_code" not in hard_fails:
-        hard_fails.append("broken_code")
-
-    verdict["hard_fails"] = hard_fails
-    verdict["pass"] = False
-    verdict["total_score"] = 0
-    verdict["rationale"] = (
-        str(verdict.get("rationale", ""))
-        + "\n\nCode verification failed before Judge pass/fail was accepted. "
-        + "Broken or blocked code cannot pass regardless of model score."
-    ).strip()
-    verdict["code_verification"] = code_feedback
-    return verdict
-
-
-def should_break_on_hard_fail(
-    mode: str,
-    verdict: dict,
-    iteration: int,
-    max_loops: int,
-) -> bool:
-    """Allow coding-mode broken_code to continue until max loops."""
-    hard_fails = verdict.get("hard_fails") or []
-    if not hard_fails:
-        return False
-    if mode == "coding" and "broken_code" in hard_fails and iteration < max_loops:
-        return False
-    return True
 
 
 def render_score_status(score: int, threshold: int) -> str:
@@ -182,289 +70,44 @@ def render_status_pill(label: str, tone: str = "neutral"):
 
 def run_pipeline_thread(
     goal: str,
-    selected_mode: str,
     model_main: str | None,
     model_fast: str | None,
-    model_judge: str | None,
     max_loops: int,
     threshold: int,
     min_improvement: int,
     run_dir: Path,
     event_queue: Queue,
+    path_override: str | None = None,
+    allow_cloud: bool = False,
 ):
     """
-    Runs the full pipeline in a background thread and posts events to event_queue
-    so the Streamlit UI can display each completed agent step.
+    Runs run.py's real run_pipeline() in a background thread, forwarding
+    its on_step events straight to event_queue so the UI updates exactly
+    as before -- this replaces the previous separate, duplicated pipeline
+    implementation (Phase 8). Every phase wired into run_pipeline() (Phase 2
+    validators, Phase 3 routing, Phase 4 resilience, Phase 5 metrics, Phase 6
+    memory discipline, Phase 7 cloud gating) now applies here too, since
+    this is the same function the CLI calls.
     """
     try:
-        summary = {
-            "goal": goal,
-            "active_profile": get_active_profile(),
-            "model_main_override": model_main,
-            "model_fast_override": model_fast,
-            "model_judge_override": model_judge,
-            "role_models": {},
-            "threshold": threshold,
-            "max_loops": max_loops,
-            "iterations_run": 0,
-            "scores": [],
-            "code_verification": [],
-            "stop_reason": "",
-            "final_score": 0,
-            "passed": False,
-            "mode": selected_mode,
-        }
-
-        # Supervisor
-        emit_step(event_queue, "Supervisor", "running")
-        supervisor_model = role_model(
-            "supervisor",
-            "general",
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        summary["role_models"]["supervisor"] = supervisor_model
-        supervisor = SupervisorAgent(model=supervisor_model)
-        sup_result = supervisor.run(goal=goal)
-        refined_goal = sup_result["refined_goal"]
-        supervisor_mode = sup_result.get("mode", "general")
-        sup_result["selected_mode"] = selected_mode
-        save(run_dir, "00_supervisor.json", json.dumps(sup_result, indent=2))
-        emit_step(
-            event_queue,
-            "Supervisor",
-            "done",
-            (
-                f"Refined goal: {refined_goal}\n\n"
-                f"Supervisor suggested mode: {supervisor_mode}\n\n"
-                f"Selected UI mode: {selected_mode}"
-            ),
-        )
-
-        # Planner
-        emit_step(event_queue, "Planner", "running")
-        planner_model = role_model(
-            "planner",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        summary["role_models"]["planner"] = planner_model
-        planner = PlannerAgent(model=planner_model)
-        plan = planner.run(goal=refined_goal, mode=selected_mode)
-        save(run_dir, "01_planner_plan.txt", plan)
-        emit_step(event_queue, "Planner", "done", plan)
-
-        # Builder
-        emit_step(event_queue, "Builder", "running")
-        builder_model = role_model(
-            "builder",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        summary["role_models"]["builder"] = builder_model
-        builder = BuilderAgent(model=builder_model)
-        draft = builder.run(goal=refined_goal, plan=plan, mode=selected_mode)
-        save(run_dir, "02_builder_draft_v0.txt", draft)
-        emit_step(event_queue, "Builder", "done", draft)
-
-        best_draft = draft
-        best_score = 0
-        previous_score = 0
-        previous_code_feedback = ""
-        stop_reason = f"max_loops ({max_loops}) reached"
-
-        critic_model = role_model(
-            "critic",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        fixer_model = role_model(
-            "fixer",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        judge_model = role_model(
-            "judge",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        summary["role_models"].update({
-            "critic": critic_model,
-            "fixer": fixer_model,
-            "judge": judge_model,
-        })
-
-        critic = CriticAgent(model=critic_model)
-        fixer = FixerAgent(model=fixer_model)
-        judge = JudgeAgent(model=judge_model, pass_threshold=threshold)
-
-        for iteration in range(1, max_loops + 1):
-            summary["iterations_run"] = iteration
-            event_queue.put({
-                "type": "loop_start",
-                "iteration": iteration,
-                "max_loops": max_loops,
-            })
-
-            emit_step(event_queue, f"Loop {iteration} Critic", "running")
-            critique = critic.run(goal=refined_goal, draft=draft)
-            if previous_code_feedback:
-                critique += (
-                    "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
-                    f"{previous_code_feedback}\n"
-                    "The next revision must fix these execution issues."
-                )
-            save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
-            emit_step(event_queue, f"Loop {iteration} Critic", "done", critique)
-
-            emit_step(event_queue, f"Loop {iteration} Fixer", "running")
-            revised = fixer.run(
-                goal=refined_goal,
-                draft=draft,
-                critique=critique,
-                iteration=iteration,
-                mode=selected_mode,
-            )
-            save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
-            emit_step(event_queue, f"Loop {iteration} Fixer", "done", revised)
-
-            code_feedback = ""
-            if selected_mode == "coding":
-                emit_step(event_queue, f"Loop {iteration} Code Verification", "running")
-                code_feedback = verify_draft_code(revised)
-                code_run_file = f"loop{iteration:02d}_code_run.txt"
-                save(run_dir, code_run_file, code_feedback)
-                summary["code_verification"].append({
-                    "iteration": iteration,
-                    "failed": verification_failed(code_feedback),
-                    "feedback_file": code_run_file,
-                })
-                emit_step(
-                    event_queue,
-                    f"Loop {iteration} Code Verification",
-                    "done",
-                    f"```text\n{code_feedback}\n```",
-                )
-
-            emit_step(event_queue, f"Loop {iteration} Judge", "running")
-            verdict = judge.run(
-                goal=refined_goal,
-                draft=revised,
-                iteration=iteration,
-                mode=selected_mode,
-            )
-            if selected_mode == "coding":
-                verdict = apply_code_verification_to_verdict(verdict, code_feedback)
-            save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
-            emit_step(
-                event_queue,
-                f"Loop {iteration} Judge",
-                "done",
-                f"```json\n{json.dumps(verdict, indent=2)}\n```",
-            )
-
-            score = int(verdict["total_score"])
-            summary["scores"].append(score)
-
-            code_failed = selected_mode == "coding" and verification_failed(code_feedback)
-            if score > best_score and not code_failed:
-                best_score = score
-                best_draft = revised
-                save(run_dir, "best_draft.txt", best_draft)
-
-            event_queue.put({
-                "type": "loop_result",
-                "iteration": iteration,
-                "score": score,
-                "scores": summary["scores"].copy(),
-                "passed": bool(verdict.get("pass")),
-                "score_bar": score_bar(score),
-            })
-
-            if verdict.get("pass"):
-                stop_reason = f"passed (score {score} >= threshold {threshold})"
-                draft = revised
-                break
-
-            if iteration > 1:
-                improvement = score - previous_score
-                if improvement < min_improvement and not code_failed:
-                    stop_reason = (
-                        f"stalled (improvement {improvement} < "
-                        f"min_improvement {min_improvement})"
-                    )
-                    draft = revised
-                    break
-
-            if should_break_on_hard_fail(selected_mode, verdict, iteration, max_loops):
-                stop_reason = f"hard_fail: {verdict['hard_fails']}"
-                draft = revised
-                break
-
-            previous_score = score
-            previous_code_feedback = code_feedback
-            draft = revised
-
-        # Final Synthesizer
-        emit_step(event_queue, "Synthesizer", "running")
-        synthesizer_model = role_model(
-            "synthesizer",
-            selected_mode,
-            model_main,
-            model_fast,
-            model_judge,
-        )
-        summary["role_models"]["synthesizer"] = synthesizer_model
-        synthesizer = SynthesizerAgent(model=synthesizer_model)
-        final_output = synthesizer.run(
-            goal=refined_goal,
-            best_draft=best_draft,
-            score=best_score,
-            iterations=summary["iterations_run"],
-        )
-        save(run_dir, "final_output.txt", final_output)
-        emit_step(event_queue, "Synthesizer", "done", final_output)
-
-        summary["stop_reason"] = stop_reason
-        summary["final_score"] = best_score
-        summary["passed"] = best_score >= threshold
-
-        iterations_data = collect_iterations(run_dir, summary["scores"])
-        db_run_id = save_run(
+        summary, final_output = run_pipeline(
             goal=goal,
-            refined_goal=refined_goal,
-            mode=selected_mode,
-            model_main=model_main or builder_model,
-            model_fast=model_fast or critic_model,
-            final_score=best_score,
-            passed=(best_score >= threshold),
-            stop_reason=stop_reason,
-            scores=summary["scores"],
-            run_dir=str(run_dir),
-            final_output=final_output,
-            iterations_data=iterations_data,
+            model_main=model_main,
+            model_fast=model_fast,
+            max_loops=max_loops,
+            threshold=threshold,
+            min_improvement=min_improvement,
+            run_dir=run_dir,
+            path_override=path_override,
+            allow_cloud=allow_cloud,
+            on_step=lambda event: event_queue.put(event),
         )
-        summary["db_run_id"] = db_run_id
-        save(run_dir, "run_summary.json", json.dumps(summary, indent=2))
-
         event_queue.put({
             "type": "final",
             "output": final_output,
             "summary": summary,
             "run_dir": str(run_dir),
         })
-
     except Exception as exc:  # pragma: no cover - visible in UI during manual runs
         event_queue.put({"type": "error", "message": str(exc)})
 
@@ -730,10 +373,15 @@ with st.sidebar:
     st.markdown("## Controls")
     st.caption(f"`{get_active_profile()}` profile")
 
-    mode = st.selectbox(
-        "Mode",
-        options=["general", "writing", "coding", "planning", "debugging", "study"],
+    # Mode is detected by the Supervisor from the goal text (see run.py) --
+    # there is no mode override here, matching the CLI, which has never
+    # exposed one either. Path (Phase 3 routing) IS overridable on the CLI
+    # via --path, so it gets a real UI equivalent here instead.
+    path_choice = st.selectbox(
+        "Path",
+        options=["auto", "fast", "normal", "deep"],
         index=0,
+        help="'auto' classifies the goal automatically, same as the CLI's default.",
     )
 
     with st.expander("Run settings", expanded=False):
@@ -760,6 +408,13 @@ with st.sidebar:
         )
 
     with st.expander("Model overrides", expanded=False):
+        # Options mirror run.py's _role_model(): "Main model" covers
+        # builder/fixer/judge/synthesizer, "Fast model" covers
+        # supervisor/planner/critic -- there is no separate judge override,
+        # matching the CLI's actual two-override capability exactly.
+        # Kept in sync with config/models.yaml's actual profile contents
+        # (Phase 6) -- gemma3:12b and phi4:14b no longer appear in any
+        # profile, so they were removed from these lists.
         model_main_choice = st.selectbox(
             "Main model",
             options=[
@@ -778,30 +433,21 @@ with st.sidebar:
                 "config-driven",
                 "llama3.2:3b",
                 "llama3.1:8b",
-                "gemma3:12b",
             ],
             index=0,
         )
 
-        model_judge_choice = st.selectbox(
-            "Judge model",
-            options=[
-                "config-driven",
-                "phi4:14b",
-                "llama3.1:8b",
-                "llama3.2:3b",
-            ],
-            index=0,
+    if is_cloud_enabled():
+        render_status_pill("Cloud enabled", "dark")
+    else:
+        render_status_pill("Local only", "green")
+
+    with st.expander("Coding safety", expanded=False):
+        st.caption(
+            "If the Supervisor detects a coding task, generated Python is "
+            "executed locally with a timeout and a safety blocklist. "
+            "Review code before reusing it."
         )
-
-    render_status_pill("Local only", "green")
-
-    if mode == "coding":
-        with st.expander("Coding safety", expanded=False):
-            st.caption(
-                "Generated Python can be executed locally with a timeout and "
-                "a safety blocklist. Review code before reusing it."
-            )
 
 
 # ── Main area ────────────────────────────────────────────────────────────────
@@ -839,7 +485,7 @@ if run_btn:
 
     model_main = normalize_override(model_main_choice)
     model_fast = normalize_override(model_fast_choice)
-    model_judge = normalize_override(model_judge_choice)
+    path_override = None if path_choice == "auto" else path_choice
 
     run_dir = make_run_dir()
     event_queue: Queue = Queue()
@@ -854,15 +500,14 @@ if run_btn:
         target=run_pipeline_thread,
         kwargs={
             "goal": goal.strip(),
-            "selected_mode": mode,
             "model_main": model_main,
             "model_fast": model_fast,
-            "model_judge": model_judge,
             "max_loops": max_loops,
             "threshold": threshold,
             "min_improvement": min_improvement,
             "run_dir": run_dir,
             "event_queue": event_queue,
+            "path_override": path_override,
         },
         daemon=True,
     )
@@ -956,6 +601,8 @@ if run_btn:
                 st.caption(f"Stop reason: {summary['stop_reason']}")
                 st.caption(f"Run saved to: {event['run_dir']}")
                 st.caption(f"Database ID: {summary['db_run_id']}")
+                if summary.get("path"):
+                    st.caption(f"Path selected: `{summary['path']}`")
 
                 if summary.get("code_verification"):
                     failed_checks = sum(
@@ -973,6 +620,76 @@ if run_btn:
                         width="stretch",
                         height=200,
                     )
+
+                if is_cloud_enabled():
+                    st.info(
+                        "Cloud fallback is enabled in config/models.yaml, but this "
+                        "dashboard does not yet support the interactive cost/"
+                        "approval flow (Phase 7's approval step reads from a "
+                        "real terminal, which a background web request doesn't "
+                        "have, and the real Anthropic adapter is still "
+                        "unimplemented pending model/pricing verification -- see "
+                        "docs/audits/2026-07-04-phase-7-maintainer-report.md). "
+                        "Cloud escalation was not attempted for this run. Use "
+                        "`python run.py --allow-cloud` from a terminal instead."
+                    )
+
+                metrics = summary.get("metrics") or {}
+
+                validator_failures = metrics.get("validator_failures") or {}
+                if validator_failures:
+                    st.markdown("### Validator failures")
+                    st.caption(
+                        "A high Judge score cannot rescue a draft that violates "
+                        "a checkable constraint (see docs/model-profiles.md)."
+                    )
+                    st.dataframe(
+                        [{"rule": rule, "times failed": count}
+                         for rule, count in validator_failures.items()],
+                        width="stretch",
+                        hide_index=True,
+                    )
+
+                if metrics.get("fallbacks"):
+                    st.warning(
+                        f"{metrics['fallbacks']} model fallback(s) occurred during "
+                        "this run (a role's model timed out and a smaller local "
+                        "model was used instead) -- output quality may be reduced "
+                        "for that step. See the metrics summary below for details."
+                    )
+
+                with st.expander("Metrics summary (Phase 5)", expanded=False):
+                    st.caption(
+                        f"Total runtime: {metrics.get('total_elapsed_ms', 0) / 1000:.1f}s"
+                    )
+                    per_agent = metrics.get("per_agent") or {}
+                    if per_agent:
+                        st.dataframe(
+                            [
+                                {
+                                    "role": role,
+                                    "model": data.get("model"),
+                                    "calls": data.get("calls"),
+                                    "elapsed_ms": data.get("elapsed_ms"),
+                                }
+                                for role, data in per_agent.items()
+                            ],
+                            width="stretch",
+                            hide_index=True,
+                        )
+                    calls_by_model = metrics.get("calls_by_model") or {}
+                    if calls_by_model:
+                        st.caption("Calls by model (confirms Phase 6's single-14B-family profiles in practice):")
+                        st.dataframe(
+                            [{"model": model, "calls": count}
+                             for model, count in calls_by_model.items()],
+                            width="stretch",
+                            hide_index=True,
+                        )
+                    metric_cols = st.columns(3)
+                    metric_cols[0].metric("Retries", metrics.get("retries", 0))
+                    metric_cols[1].metric("Fallbacks", metrics.get("fallbacks", 0))
+                    metric_cols[2].metric("Timeout events", metrics.get("timeout_events", 0))
 
                 with st.expander("Role models used", expanded=False):
                     st.json(summary["role_models"])
