@@ -160,3 +160,21 @@ cloud:
   pricing:
     input_per_million_usd: 2.00
     output_per_million_usd: 10.00
+
+# Phase 10 — deep research and internet connection, opt-in and off by
+# default. Internet access must never happen just because this code
+# exists: a real search/fetch requires BOTH internet_enabled: true here
+# AND the --enable-research CLI flag (research/run_research.py). Even
+# with both set, search_provider: "mock" (the default) means no real
+# network call happens until a real provider is explicitly configured.
+# respect_robots_txt is a hard rule for this project, not a toggle to
+# flip off casually -- only search_provider/max_sources/timeouts are
+# meant to be tuned.
+research:
+  internet_enabled: false
+  search_provider: "mock"
+  max_sources: 8
+  fetch_timeout_seconds: 15
+  max_fetch_bytes: 2000000
+  respect_robots_txt: true
+  user_agent: "LocalAIOrchestratorResearchBot/0.1"
