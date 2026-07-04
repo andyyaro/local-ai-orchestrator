@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END
 
 from orchestrator.state import PipelineState
 from orchestrator.config_loader import get_model_for_role
+from orchestrator.validators import run_validators, apply_validator_results_to_verdict
 from agents.supervisor import SupervisorAgent
 from agents.planner import PlannerAgent
 from agents.builder import BuilderAgent
@@ -100,14 +101,23 @@ def node_fixer(state: PipelineState) -> dict:
 def node_judge(state: PipelineState) -> dict:
     iteration = state.get("iteration", 1)
     threshold = state.get("threshold", 70)
+    mode = state.get("mode", "general")
+
+    validator_results = run_validators(state["refined_goal"], state["revised"], mode)
+    _save(
+        state["run_dir"],
+        f"loop{iteration:02d}_validators.json",
+        json.dumps([r.__dict__ for r in validator_results], indent=2),
+    )
 
     agent = JudgeAgent(model=_role_model(state, "judge"), pass_threshold=threshold)
     verdict = agent.run(
         goal=state["refined_goal"],
         draft=state["revised"],
         iteration=iteration,
-        mode=state.get("mode", "general"),
+        mode=mode,
     )
+    verdict = apply_validator_results_to_verdict(verdict, validator_results)
     _save(state["run_dir"], f"loop{iteration:02d}_judge.json",
           json.dumps(verdict, indent=2))
 
