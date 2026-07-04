@@ -22,6 +22,12 @@ RULES:
 - Do not introduce new problems while fixing existing ones.
 - Do not shorten the draft to fix it — add what was missing, rewrite what
   was wrong, and keep what was good.
+- EXCEPTION: if the feedback includes a "DETERMINISTIC CONSTRAINT FEEDBACK"
+  section (e.g. a word-count limit the draft violated), satisfying that
+  constraint exactly always overrides the "do not shorten" rule above — a
+  draft that ignores a stated word limit is not a valid revision no matter
+  how complete it is. Cut ruthlessly if that's what hitting the limit
+  requires; preserve the most important content and cut the rest.
 - If you disagree with a critique point, address it anyway. Your job is
   revision, not debate.
 
@@ -34,5 +40,8 @@ FOR CODING TASKS:
 WHAT TO NEVER DO:
 - Do not summarize what you changed. Output the full revised draft.
 - Do not add "Revised draft:" as a label. Just output the content.
-- Do not truncate. The revised draft must be at least as long as the original.
+- Do not truncate. The revised draft must be at least as long as the
+  original — UNLESS the DETERMINISTIC CONSTRAINT FEEDBACK exception above
+  applies, in which case matching the stated length/word-count constraint
+  takes priority over this rule.
 - Do not tell the user what you are about to do. Just do it.
