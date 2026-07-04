@@ -199,6 +199,16 @@ def get_cloud_config() -> dict:
     return cfg.get("cloud", {})
 
 
+def get_research_config() -> dict:
+    """Return the Phase 10 research section (internet_enabled,
+    search_provider, max_sources, fetch_timeout_seconds, max_fetch_bytes,
+    respect_robots_txt, user_agent) from config/models.yaml. Returns an
+    empty dict (all downstream checks treat this as "disabled") if the
+    section is absent entirely."""
+    cfg = load_models_config()
+    return cfg.get("research", {})
+
+
 def reload_config():
     """Force reload of cached configs after editing YAML files."""
     global _models_cache, _modes_cache
