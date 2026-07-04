@@ -9,6 +9,7 @@ from orchestrator.validators import (
     count_words,
     extract_word_limit,
     run_validators,
+    should_break_on_hard_fail,
 )
 
 
@@ -323,3 +324,59 @@ def test_regression_120_word_verdict_cannot_pass_the_judge():
 
     assert final_verdict["pass"] is False
     assert "constraint_violation" in final_verdict["hard_fails"]
+
+
+# ── should_break_on_hard_fail: Phase 6c repair-vs-stop decisions ────────────────
+
+def test_should_break_on_hard_fail_returns_false_when_no_hard_fails():
+    verdict = {"hard_fails": []}
+    assert should_break_on_hard_fail("writing", verdict, iteration=1, max_loops=3) is False
+
+
+def test_should_break_on_hard_fail_continues_for_constraint_violation_alone_with_iterations_remaining():
+    verdict = {"hard_fails": ["constraint_violation"]}
+    assert should_break_on_hard_fail("writing", verdict, iteration=1, max_loops=3) is False
+
+
+def test_should_break_on_hard_fail_stops_for_constraint_violation_when_max_loops_reached():
+    verdict = {"hard_fails": ["constraint_violation"]}
+    assert should_break_on_hard_fail("writing", verdict, iteration=3, max_loops=3) is True
+
+
+def test_should_break_on_hard_fail_stops_when_unknown_hard_fail_present_alongside_constraint_violation():
+    """
+    constraint_violation alone is repairable, but a run must never silently
+    keep looping on a hard fail it doesn't know how to repair -- if some
+    other, unrecognized hard fail is present too, stop immediately as
+    before, regardless of how many iterations remain.
+    """
+    verdict = {"hard_fails": ["constraint_violation", "some_other_reason"]}
+    assert should_break_on_hard_fail("writing", verdict, iteration=1, max_loops=3) is True
+
+
+# ── should_break_on_hard_fail: coding-mode broken_code carve-out is unchanged ───
+#
+# Phase 6c must not weaken the existing broken_code behavior: it continues
+# until max_loops in coding mode regardless of what else is in hard_fails,
+# exactly as before this phase.
+
+def test_should_break_on_hard_fail_continues_for_broken_code_in_coding_mode_when_iterations_remain():
+    verdict = {"hard_fails": ["broken_code"]}
+    assert should_break_on_hard_fail("coding", verdict, iteration=1, max_loops=3) is False
+
+
+def test_should_break_on_hard_fail_stops_for_broken_code_when_max_loops_reached():
+    verdict = {"hard_fails": ["broken_code"]}
+    assert should_break_on_hard_fail("coding", verdict, iteration=3, max_loops=3) is True
+
+
+def test_should_break_on_hard_fail_continues_for_broken_code_alongside_constraint_violation_in_coding_mode():
+    verdict = {"hard_fails": ["broken_code", "constraint_violation"]}
+    assert should_break_on_hard_fail("coding", verdict, iteration=1, max_loops=3) is False
+
+
+def test_should_break_on_hard_fail_stops_for_broken_code_outside_coding_mode():
+    """broken_code's carve-out is coding-mode-only -- outside coding mode
+    it is an unrecognized hard fail and stops immediately, same as before."""
+    verdict = {"hard_fails": ["broken_code"]}
+    assert should_break_on_hard_fail("writing", verdict, iteration=1, max_loops=3) is True

@@ -25,7 +25,11 @@ from orchestrator.logger import get_logger
 from orchestrator.metrics import RunMetrics
 from orchestrator.resilience import FatalModelError
 from orchestrator.router import classify_path, get_path_config
-from orchestrator.validators import run_validators, apply_validator_results_to_verdict
+from orchestrator.validators import (
+    run_validators,
+    apply_validator_results_to_verdict,
+    should_break_on_hard_fail,
+)
 
 
 DEFAULT_MAX_LOOPS = 3
@@ -131,18 +135,128 @@ def _apply_code_verification_to_verdict(verdict: dict, code_feedback: str,
     return verdict
 
 
-def _should_break_on_hard_fail(mode: str, verdict: dict, iteration: int,
-                               max_loops: int) -> bool:
+def _run_critic_fixer_judge_iteration(
+    *, log, metrics: RunMetrics, run_dir: Path, summary: dict,
+    iteration: int, refined_goal: str, goal: str, draft: str, mode: str,
+    critic: CriticAgent, critic_model: str,
+    fixer: FixerAgent, fixer_model: str,
+    judge: JudgeAgent, judge_model: str,
+    effective_threshold: int,
+    previous_code_feedback: str, previous_validator_feedback: str,
+) -> tuple[str, dict, int, str, str]:
     """
-    Existing hard failures stop the loop. In coding mode, broken_code is allowed
-    to continue until max loops so the next Fixer pass can use execution feedback.
+    Run one Critic -> Fixer -> (code verification) -> validate -> Judge
+    pass. Shared by the normal/deep Critic/Fixer loop and the fast path's
+    repair fallback (see run_pipeline) so both apply identical constraint
+    enforcement instead of maintaining two copies of this logic.
+
+    Threads the previous iteration's code-verification feedback (coding
+    mode) and deterministic validator feedback (any mode) into the
+    critique before it reaches the Fixer, so a constraint violation isn't
+    just re-flagged -- the Fixer gets concrete, actionable direction (e.g.
+    the exact word count to hit) rather than having to re-discover it.
+
+    Returns (revised_draft, verdict, score, code_feedback, validator_feedback)
+    where validator_feedback is this iteration's failed-validator detail
+    text, to be threaded into the NEXT iteration via the same parameter.
     """
-    hard_fails = verdict.get("hard_fails") or []
-    if not hard_fails:
-        return False
-    if mode == "coding" and "broken_code" in hard_fails and iteration < max_loops:
-        return False
-    return True
+    print(f"  [Critic] Reviewing draft (iteration {iteration})...")
+    critique = _log_agent_call(
+        log, metrics, "critic", critic_model,
+        lambda: critic.run(goal=refined_goal, draft=draft),
+        iteration=iteration,
+    )
+    if previous_code_feedback:
+        critique += (
+            "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
+            f"{previous_code_feedback}\n"
+            "The next revision must fix these execution issues."
+        )
+    if previous_validator_feedback:
+        critique += (
+            "\n\nDETERMINISTIC CONSTRAINT FEEDBACK FROM PREVIOUS REVISION:\n"
+            f"{previous_validator_feedback}\n"
+            "The next revision MUST satisfy this constraint exactly (for "
+            "example, hitting a required word count), even if it means "
+            "shortening or restructuring the draft."
+        )
+    save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
+
+    revised = _log_agent_call(
+        log, metrics, "fixer", fixer_model,
+        lambda: fixer.run(
+            goal=refined_goal,
+            draft=draft,
+            critique=critique,
+            iteration=iteration,
+            mode=mode,
+        ),
+        iteration=iteration,
+    )
+    save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
+
+    code_feedback = ""
+    if mode == "coding":
+        print("  [Code Verification] Running extracted Python code...")
+        code_feedback = verify_draft_code(revised)
+        code_failed = verification_failed(code_feedback)
+        code_run_file = f"loop{iteration:02d}_code_run.txt"
+        save(run_dir, code_run_file, code_feedback)
+        summary["code_verification"].append({
+            "iteration": iteration,
+            "failed": code_failed,
+            "feedback_file": code_run_file,
+        })
+        first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
+        log.code_verification(
+            iteration=iteration,
+            success=not code_failed,
+            hard_fail=code_failed,
+            summary=first_line,
+        )
+        print(f"  [Code Verification] {first_line}")
+
+    validator_results = run_validators(refined_goal, revised, mode, original_goal=goal)
+    save(
+        run_dir,
+        f"loop{iteration:02d}_validators.json",
+        json.dumps([r.__dict__ for r in validator_results], indent=2),
+    )
+
+    verdict = _log_agent_call(
+        log, metrics, "judge", judge_model,
+        lambda: judge.run(
+            goal=refined_goal,
+            draft=revised,
+            iteration=iteration,
+            mode=mode,
+        ),
+        iteration=iteration,
+    )
+    if mode == "coding":
+        verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
+    verdict = apply_validator_results_to_verdict(verdict, validator_results)
+    save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
+    for result in validator_results:
+        if not result.passed:
+            metrics.record_validator_failure(result.rule)
+    for reason in verdict.get("hard_fails", []):
+        metrics.record_hard_fail(reason)
+
+    score = int(verdict["total_score"])
+    log.score(
+        iteration=iteration,
+        score=score,
+        passed=bool(verdict["pass"]),
+        category_scores=verdict.get("scores", {}),
+        hard_fails=verdict.get("hard_fails", []),
+    )
+    print(f"    Score: {score_bar(score)}")
+
+    failed_validators = [r for r in validator_results if not r.passed]
+    validator_feedback = "; ".join(r.detail for r in failed_validators)
+
+    return revised, verdict, score, code_feedback, validator_feedback
 
 
 def run_pipeline(
@@ -249,11 +363,25 @@ def run_pipeline(
     best_score = 0
     previous_score = 0
     previous_code_feedback = ""
+    previous_validator_feedback = ""
     stop_reason = "max_loops"
 
     judge_model = _role_model("judge", mode, model_main, model_fast)
     summary["role_models"]["judge"] = judge_model
     judge = JudgeAgent(model=judge_model, pass_threshold=effective_threshold, metrics=metrics, num_ctx=run_num_ctx)
+
+    # Constructed unconditionally (cheap -- no model call happens until
+    # .run() is invoked) so the fast path can fall back to a Critic/Fixer
+    # repair attempt on a repairable validator failure without needing a
+    # separate code path to build these agents.
+    critic_model = _role_model("critic", mode, model_main, model_fast)
+    fixer_model = _role_model("fixer", mode, model_main, model_fast)
+    summary["role_models"].update({
+        "critic": critic_model,
+        "fixer": fixer_model,
+    })
+    critic = CriticAgent(model=critic_model, metrics=metrics, num_ctx=run_num_ctx)
+    fixer = FixerAgent(model=fixer_model, metrics=metrics, num_ctx=run_num_ctx)
 
     if path_config["skip_critic_fixer_loop"]:
         iteration = 1
@@ -328,121 +456,77 @@ def run_pipeline(
         save(run_dir, "best_draft.txt", best_draft)
         draft = revised
 
+        failed_validators = [r for r in validator_results if not r.passed]
+        previous_code_feedback = code_feedback
+        previous_validator_feedback = "; ".join(r.detail for r in failed_validators)
+
         if verdict["pass"]:
             stop_reason = f"passed (score {score} >= threshold {effective_threshold})"
+        elif verdict.get("hard_fails") and not should_break_on_hard_fail(
+            mode, verdict, iteration, effective_max_loops
+        ):
+            # The fast path normally skips Critic/Fixer entirely, but a
+            # repairable constraint violation (e.g. a word-count miss)
+            # deserves a real repair attempt rather than an immediate,
+            # avoidable failure -- fall back to the same Critic/Fixer/Judge
+            # loop the normal/deep paths use for the remaining iterations.
+            print("  [Repair] Fast path validator failure is repairable -- "
+                  "falling back to Critic/Fixer for remaining iterations.")
+            stop_reason = f"max_loops ({effective_max_loops}) reached"
+            for iteration in range(2, effective_max_loops + 1):
+                summary["iterations_run"] = iteration
+                header(f"LOOP {iteration}/{effective_max_loops}", "REPAIR: CRITIC → FIXER → VERIFY → JUDGE")
+
+                revised, verdict, score, code_feedback, validator_feedback = _run_critic_fixer_judge_iteration(
+                    log=log, metrics=metrics, run_dir=run_dir, summary=summary,
+                    iteration=iteration, refined_goal=refined_goal, goal=goal,
+                    draft=draft, mode=mode,
+                    critic=critic, critic_model=critic_model,
+                    fixer=fixer, fixer_model=fixer_model,
+                    judge=judge, judge_model=judge_model,
+                    effective_threshold=effective_threshold,
+                    previous_code_feedback=previous_code_feedback,
+                    previous_validator_feedback=previous_validator_feedback,
+                )
+                summary["scores"].append(score)
+                draft = revised
+
+                if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
+                    best_score = score
+                    best_draft = revised
+                    save(run_dir, "best_draft.txt", best_draft)
+
+                if verdict["pass"]:
+                    stop_reason = f"passed (score {score} >= threshold {effective_threshold})"
+                    break
+
+                if should_break_on_hard_fail(mode, verdict, iteration, effective_max_loops):
+                    stop_reason = f"hard_fail: {verdict['hard_fails']}"
+                    break
+
+                previous_code_feedback = code_feedback
+                previous_validator_feedback = validator_feedback
         elif verdict.get("hard_fails"):
             stop_reason = f"hard_fail: {verdict['hard_fails']}"
         else:
             stop_reason = f"fast path single iteration complete (score {score})"
     else:
-        critic_model = _role_model("critic", mode, model_main, model_fast)
-        fixer_model = _role_model("fixer", mode, model_main, model_fast)
-        summary["role_models"].update({
-            "critic": critic_model,
-            "fixer": fixer_model,
-        })
-
-        critic = CriticAgent(model=critic_model, metrics=metrics, num_ctx=run_num_ctx)
-        fixer = FixerAgent(model=fixer_model, metrics=metrics, num_ctx=run_num_ctx)
-
         for iteration in range(1, effective_max_loops + 1):
             summary["iterations_run"] = iteration
             header(f"LOOP {iteration}/{effective_max_loops}", "CRITIC → FIXER → VERIFY → JUDGE")
 
-            print(f"  [Critic] Reviewing draft (iteration {iteration})...")
-            critique = _log_agent_call(
-                log,
-                metrics,
-                "critic",
-                critic_model,
-                lambda: critic.run(goal=refined_goal, draft=draft),
-                iteration=iteration,
+            revised, verdict, score, code_feedback, validator_feedback = _run_critic_fixer_judge_iteration(
+                log=log, metrics=metrics, run_dir=run_dir, summary=summary,
+                iteration=iteration, refined_goal=refined_goal, goal=goal,
+                draft=draft, mode=mode,
+                critic=critic, critic_model=critic_model,
+                fixer=fixer, fixer_model=fixer_model,
+                judge=judge, judge_model=judge_model,
+                effective_threshold=effective_threshold,
+                previous_code_feedback=previous_code_feedback,
+                previous_validator_feedback=previous_validator_feedback,
             )
-            if previous_code_feedback:
-                critique += (
-                    "\n\nCODE VERIFICATION FEEDBACK FROM PREVIOUS REVISION:\n"
-                    f"{previous_code_feedback}\n"
-                    "The next revision must fix these execution issues."
-                )
-            save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
-
-            revised = _log_agent_call(
-                log,
-                metrics,
-                "fixer",
-                fixer_model,
-                lambda: fixer.run(
-                    goal=refined_goal,
-                    draft=draft,
-                    critique=critique,
-                    iteration=iteration,
-                    mode=mode,
-                ),
-                iteration=iteration,
-            )
-            save(run_dir, f"loop{iteration:02d}_fixer.txt", revised)
-
-            code_feedback = ""
-            if mode == "coding":
-                print("  [Code Verification] Running extracted Python code...")
-                code_feedback = verify_draft_code(revised)
-                code_failed = verification_failed(code_feedback)
-                code_run_file = f"loop{iteration:02d}_code_run.txt"
-                save(run_dir, code_run_file, code_feedback)
-                summary["code_verification"].append({
-                    "iteration": iteration,
-                    "failed": code_failed,
-                    "feedback_file": code_run_file,
-                })
-                first_line = code_feedback.splitlines()[0] if code_feedback else "No feedback"
-                log.code_verification(
-                    iteration=iteration,
-                    success=not code_failed,
-                    hard_fail=code_failed,
-                    summary=first_line,
-                )
-                print(f"  [Code Verification] {first_line}")
-
-            validator_results = run_validators(refined_goal, revised, mode, original_goal=goal)
-            save(
-                run_dir,
-                f"loop{iteration:02d}_validators.json",
-                json.dumps([r.__dict__ for r in validator_results], indent=2),
-            )
-
-            verdict = _log_agent_call(
-                log,
-                metrics,
-                "judge",
-                judge_model,
-                lambda: judge.run(
-                    goal=refined_goal,
-                    draft=revised,
-                    iteration=iteration,
-                    mode=mode,
-                ),
-                iteration=iteration,
-            )
-            if mode == "coding":
-                verdict = _apply_code_verification_to_verdict(verdict, code_feedback, effective_threshold)
-            verdict = apply_validator_results_to_verdict(verdict, validator_results)
-            save(run_dir, f"loop{iteration:02d}_judge.json", json.dumps(verdict, indent=2))
-            for result in validator_results:
-                if not result.passed:
-                    metrics.record_validator_failure(result.rule)
-            for reason in verdict.get("hard_fails", []):
-                metrics.record_hard_fail(reason)
-
-            score = int(verdict["total_score"])
             summary["scores"].append(score)
-            log.score(
-                iteration=iteration,
-                score=score,
-                passed=bool(verdict["pass"]),
-                category_scores=verdict.get("scores", {}),
-                hard_fails=verdict.get("hard_fails", []),
-            )
-            print(f"    Score: {score_bar(score)}")
 
             if score > best_score and not (mode == "coding" and verification_failed(code_feedback)):
                 best_score = score
@@ -464,13 +548,14 @@ def run_pipeline(
                     draft = revised
                     break
 
-            if _should_break_on_hard_fail(mode, verdict, iteration, effective_max_loops):
+            if should_break_on_hard_fail(mode, verdict, iteration, effective_max_loops):
                 stop_reason = f"hard_fail: {verdict['hard_fails']}"
                 draft = revised
                 break
 
             previous_score = score
             previous_code_feedback = code_feedback
+            previous_validator_feedback = validator_feedback
             draft = revised
         else:
             stop_reason = f"max_loops ({effective_max_loops}) reached"

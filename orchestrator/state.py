@@ -37,6 +37,7 @@ class PipelineState(TypedDict, total=False):
     previous_score: int          # score from last iteration for stall detection
     best_score: int              # highest score seen across all iterations
     best_draft: str              # draft that achieved best_score
+    previous_validator_feedback: str  # failed-validator detail threaded into the next critique
 
     # Control
     stop_reason: str             # why the loop ended

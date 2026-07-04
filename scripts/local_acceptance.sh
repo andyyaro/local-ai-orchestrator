@@ -5,11 +5,14 @@ cd "$(dirname "$0")/.."
 
 curl --fail http://localhost:11434
 
+# --max-loops 3 (not 1): leaves room for the Phase 6c repair loop to run a
+# Critic/Fixer pass on a word-count miss before giving up -- with only 1
+# loop allowed, a repairable constraint violation has no room to repair.
 python run.py \
   --goal "Write a 50-word summary of why sleep matters." \
   --model-main llama3.2:3b \
   --model-fast llama3.2:3b \
-  --max-loops 1 \
+  --max-loops 3 \
   --threshold 50
 
 latest_run=$(ls -td runs/*/ | head -1)
