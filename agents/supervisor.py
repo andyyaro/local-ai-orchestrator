@@ -7,6 +7,7 @@ For the MVP, it returns the goal with light cleanup and defaults to "general".
 """
 
 from agents.base_agent import BaseAgent
+from orchestrator.mode_classifier import has_obvious_coding_signal
 
 
 class SupervisorAgent(BaseAgent):
@@ -46,6 +47,22 @@ MODE: <one of: writing, coding, planning, debugging, study, general>
                 if mode_raw in {"writing", "coding", "planning",
                                 "debugging", "study", "general"}:
                     mode = mode_raw
+
+        # Phase 12b: deterministic backstop. The Supervisor's own
+        # LLM-based mode classification can misclassify an unambiguous
+        # coding goal (verified against a real run: "Write a Python
+        # function called double(n)..." was classified mode="general").
+        # If the user's raw goal contains an obvious coding signal and
+        # the model didn't already pick a coding-adjacent mode, force
+        # "coding" rather than silently downgrading it. Checked against
+        # the original goal, not refined_goal, since the model's own
+        # rephrasing is exactly what can drop the signal in the first
+        # place (mirroring the original-vs-refined precedent already
+        # established for hard-constraint preservation).
+        if mode not in {"coding", "debugging"} and has_obvious_coding_signal(goal):
+            print(f"  [Supervisor] Overriding mode '{mode}' -> 'coding' "
+                  "(deterministic coding-signal guardrail)")
+            mode = "coding"
 
         print(f"  [Supervisor] Mode: {mode} | Goal: {refined_goal[:80]}")
         return {"refined_goal": refined_goal, "mode": mode}
