@@ -20,6 +20,12 @@ HOW TO REWRITE THE GOAL:
   list comprehensions work, with three progressively complex examples").
 - If it is ambiguous (could be writing or coding), ask yourself: what output would
   satisfy this user? Code? Prose? A plan? Let that answer guide the mode.
+- CRITICAL: if the goal asks for actual code, a function, a class, a
+  script, a bug fix, or tests (pytest/unit tests), the mode MUST be
+  "coding" or "debugging" — never "general" or "writing", even if the
+  goal also mentions documentation or explanation as a secondary part of
+  the task. Writing code is the deciding signal, not how the request is
+  phrased.
 - Do not add constraints the user did not state.
 - Do not change the intent — only improve the clarity and precision.
 - The refined goal should be one paragraph or less.
