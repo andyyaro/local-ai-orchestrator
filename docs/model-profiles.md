@@ -119,14 +119,29 @@ as `num_ctx` to every agent constructor, and `orchestrator/graph.py`'s
 footprint actually scales with the active profile's budget rather than
 every agent using a single hardcoded `4096` regardless of profile.
 
-## Manual smoke test
+## Manual acceptance scripts
 
-`scripts/local_acceptance.sh` runs a `bootstrap`-profile pipeline
-end-to-end and checks that `run_summary.json` and `final_output.txt` were
-produced. It is intentionally not wired into CI — it requires Ollama
-running locally with `llama3.2:3b` already pulled, and fails loudly rather
-than pulling anything for you:
+See README.md's "Release Gates" section for the full picture. In short:
+
+`scripts/local_acceptance.sh` is a lightweight **smoke test**: it runs a
+`llama3.2:3b` pipeline end-to-end and checks that `run_summary.json` and
+`final_output.txt` were produced, and that the pipeline never silently
+reports `passed: true` for output that actually violates the stated
+constraint (the Phase 6b regression). It does **not** require
+`llama3.2:3b` to actually satisfy a strict word-count constraint — a small
+model correctly detecting and reporting its own constraint violation is a
+pass here, not a failure (Phase 12c).
+
+`scripts/strict_acceptance.sh` is the **strict quality gate**: it uses a
+stronger model (`llama3.1:8b`) and requires the final output to genuinely
+satisfy the constraint, failing loudly if it doesn't. It is optional for
+the immediate v2.0 tag, since it is slower and more model-dependent.
+
+Both scripts are intentionally not wired into CI — they require Ollama
+running locally with the relevant model already pulled, and fail loudly
+(never pulling anything for you) if it's missing:
 
 ```bash
-bash scripts/local_acceptance.sh
+bash scripts/local_acceptance.sh    # smoke test — required for release
+bash scripts/strict_acceptance.sh   # strict quality gate — optional for this tag
 ```
