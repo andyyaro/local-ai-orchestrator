@@ -475,6 +475,61 @@ pressure stays green.
 
 ---
 
+## Release Gates
+
+Four distinct checks, from fastest/always-required to slowest/optional.
+Each one tests something different — running a slower check does not make
+a faster one redundant, and passing a faster one does not substitute for
+a slower one where it applies.
+
+**Unit/CI gate** — required on every PR, runs in GitHub Actions:
+
+```bash
+python -m ruff check .
+python -m pytest tests/ -v
+```
+
+**Quick release check** — required before tagging a release. Adds a
+lightweight end-to-end smoke test with a small local model:
+
+```bash
+python -m ruff check .
+python -m pytest tests/ -v
+bash scripts/local_acceptance.sh
+```
+
+`scripts/local_acceptance.sh` verifies Ollama is running and the pipeline
+completes end-to-end (or fails safely) with a small model
+(`llama3.2:3b`). It intentionally does **not** require a small model to
+satisfy a strict output-quality constraint like an exact word count — a
+small model correctly detecting and reporting its own constraint
+violation is a pass here, not a failure. It does still guard against the
+Phase 6b regression where the pipeline silently reported success despite
+a violated constraint.
+
+**Full release-candidate check** — slow (many real model calls,
+10–20+ minutes observed); run after major pipeline/model behavior
+changes, not before every tag:
+
+```bash
+python -m eval.run_eval_suite
+```
+
+**Strict local quality check** — optional/recommended for this immediate
+v2.0 tag, since it is slower and model-dependent:
+
+```bash
+bash scripts/strict_acceptance.sh
+```
+
+`scripts/strict_acceptance.sh` uses a stronger local model
+(`llama3.1:8b`) and requires the final output to genuinely satisfy a
+precise constraint (an exact word count), failing loudly if it doesn't.
+It never downloads models automatically — if `llama3.1:8b` isn't pulled
+locally, it reports the exact `ollama pull` command and skips.
+
+---
+
 ## Screenshots
 
 ### Minimal Streamlit dashboard
