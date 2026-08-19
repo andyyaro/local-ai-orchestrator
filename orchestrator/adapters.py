@@ -208,7 +208,7 @@ _adapter_cache: ModelAdapter | None = None
 def get_adapter() -> ModelAdapter:
     """
     Return the active ModelAdapter based on config/models.yaml provider setting.
-    Cached after first call — call reload_config() to reset.
+    Cached after first call - call reload_config() to reset.
     """
     global _adapter_cache
     if _adapter_cache is not None:

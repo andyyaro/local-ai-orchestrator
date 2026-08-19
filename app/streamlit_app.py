@@ -367,7 +367,7 @@ code {
 )
 
 
-# ── Sidebar — configuration ──────────────────────────────────────────────────
+# ── Sidebar - configuration ──────────────────────────────────────────────────
 
 with st.sidebar:
     st.markdown("## Controls")
@@ -754,7 +754,7 @@ else:
                 st.markdown("### Iterations")
                 for item in selected_run["iterations_detail"]:
                     st.markdown(
-                        f"**Iteration {item['iteration']} — score {item['score']}/100**"
+                        f"**Iteration {item['iteration']} - score {item['score']}/100**"
                     )
                     st.caption(item.get("critique", "")[:500])
 

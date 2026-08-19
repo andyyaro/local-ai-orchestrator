@@ -1,9 +1,9 @@
-# Unattended Upgrade Batch — Final Report (Phases 3-5)
+# Unattended Upgrade Batch - Final Report (Phases 3-5)
 
 Date: 2026-07-04
 
-This session ran three upgrade phases sequentially — Phase 3 (routing/speed),
-Phase 4 (timeout/resilience), and Phase 5 (metrics) — following each phase's
+This session ran three upgrade phases sequentially - Phase 3 (routing/speed),
+Phase 4 (timeout/resilience), and Phase 5 (metrics) - following each phase's
 guide in `docs/upgrade-guide/`, with the full checkout → implement → test →
 PR → CI → squash-merge → cleanup → report loop for each. Per-phase detail
 lives in the individual reports:
@@ -14,14 +14,14 @@ lives in the individual reports:
 
 ## 1. Phases completed
 
-- **Phase 3 — Routing, Speed, and Pipeline Collapse**: fast/normal/deep
+- **Phase 3 - Routing, Speed, and Pipeline Collapse**: fast/normal/deep
   routing added to both `run.py` and `orchestrator/graph.py`, skipping the
   Planner and/or the Critic/Fixer loop based on a deterministic heuristic.
-- **Phase 4 — Timeout and Resilience**: typed model-call exceptions,
+- **Phase 4 - Timeout and Resilience**: typed model-call exceptions,
   size-class timeouts, connection-error retry, timeout-triggered fallback to
   a smaller model, and clean `FatalModelError` propagation instead of a hard
   `sys.exit(1)`.
-- **Phase 5 — Metrics and Profiling**: a `RunMetrics` collector aggregating
+- **Phase 5 - Metrics and Profiling**: a `RunMetrics` collector aggregating
   per-agent timing, model-swap counts, routing path, retries/fallbacks/
   timeouts, and validator/hard-fail counts into `run_summary.json`.
 
@@ -38,11 +38,11 @@ or restricted commands were run).
 
 ## 3. Merge SHAs
 
-- Phase 3: `fa3c09a` — feat: add fast/normal/deep routing to reduce
+- Phase 3: `fa3c09a` - feat: add fast/normal/deep routing to reduce
   unnecessary model calls (#5)
-- Phase 4: `6ddcdaf` — feat: add failure classification, model fallback, and
+- Phase 4: `6ddcdaf` - feat: add failure classification, model fallback, and
   clean failure handling (#6)
-- Phase 5: `e561fd4` — feat: add run metrics collection and aggregation into
+- Phase 5: `e561fd4` - feat: add run metrics collection and aggregation into
   run_summary.json (#7)
 
 Each phase's PR was squash-merged with `gh pr merge --squash --delete-branch`
@@ -64,7 +64,7 @@ respective merges. No phase branches remain.
 ## main...origin/main
 ```
 
-Clean — nothing to commit, local `main` fully in sync with `origin/main` at
+Clean - nothing to commit, local `main` fully in sync with `origin/main` at
 `8c0dae1` (the Phase 5 report commit, made directly to `main` following the
 same pattern as the Phase 0 baseline audit already in the repo).
 
@@ -93,7 +93,7 @@ same pattern as the Phase 0 baseline audit already in the repo).
 - **The fast/normal/deep routing heuristic** (`orchestrator/router.py`) is a
   first-pass, deliberately simple set of constants (word-count threshold,
   keyword list). It hasn't been validated against a large sample of real
-  goals — the guide's own remediation path (pin misclassified goals as
+  goals - the guide's own remediation path (pin misclassified goals as
   regression tests before tuning) applies if it misfires in practice.
 - **The empty-response retry safety net** that existed in the pre-Phase-4
   `call_model()` (retrying when the adapter returned an empty string) was
@@ -110,9 +110,9 @@ technical readiness standpoint: yes, the prerequisites Phase 6 would build on
 merged, tested, and green on `main`, so a future session could pick up Phase
 6 (memory discipline / model-swap elimination) cleanly. The two open items
 most relevant to Phase 6 specifically are the `calls_by_model` metrics gap
-(item 6 above) — Phase 6's whole premise is reducing model swaps, and you'll
+(item 6 above) - Phase 6's whole premise is reducing model swaps, and you'll
 want real retry/fallback numbers, not just the call-count/model-swap data, to
-fully evaluate it — and confirming `run_langgraph.py` parity if the LangGraph
+fully evaluate it - and confirming `run_langgraph.py` parity if the LangGraph
 pipeline is meant to be a first-class target for that phase too.
 
 This is the final stopping point for this session, as instructed.

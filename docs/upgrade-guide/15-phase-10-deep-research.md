@@ -1,9 +1,9 @@
-# 15 — Phase 10: Deep Research and Internet Connection
+# 15 - Phase 10: Deep Research and Internet Connection
 
 ## Goal
 
-Add an internet-connected deep research capability — search, fetch,
-cite — with deterministic citation verification, so every claim in a
+Add an internet-connected deep research capability - search, fetch,
+cite - with deterministic citation verification, so every claim in a
 generated research report traces back to a source that was actually
 retrieved and actually supports it.
 
@@ -13,14 +13,14 @@ This is the first phase that gives the system network access to the open
 internet, which is a meaningfully bigger trust boundary than a cloud model
 API call (Phase 7): fetched web content is untrusted, potentially
 adversarial, and may attempt prompt injection against whichever model reads
-it. This matters because the failure mode here isn't just "bad output" —
+it. This matters because the failure mode here isn't just "bad output" -
 it's a research report that looks authoritative and cites sources that don't
 actually say what the report claims, or a page that successfully tricks the
 Builder into ignoring its actual task.
 
 There's also a direct tie-in worth noticing: `prompts/judge.txt` already
 lists `fabricated_citations` as a hard-fail category the Judge is *supposed*
-to catch — "invented sources, fake quotes, or made-up statistics" — but
+to catch - "invented sources, fake quotes, or made-up statistics" - but
 exactly like the 120-word constraint from Phase 2, there is currently no
 deterministic code that actually checks this. An LLM judge is no more
 reliable at verifying a citation than it was at counting words. This phase's
@@ -32,12 +32,12 @@ do so.
 
 ```text
 research/                         (new top-level package)
-research/search_provider.py       (new — search abstraction + mock provider)
-research/fetcher.py                (new — robots.txt-respecting URL fetch)
-research/prompt_injection_guard.py (new — sanitizes untrusted fetched content)
-research/source_registry.py        (new — tracks every fetched source)
-research/citation_verifier.py       (new — verifies claims against sources)
-research/run_research.py            (new — narrow research pipeline entry point)
+research/search_provider.py       (new - search abstraction + mock provider)
+research/fetcher.py                (new - robots.txt-respecting URL fetch)
+research/prompt_injection_guard.py (new - sanitizes untrusted fetched content)
+research/source_registry.py        (new - tracks every fetched source)
+research/citation_verifier.py       (new - verifies claims against sources)
+research/run_research.py            (new - narrow research pipeline entry point)
 config/models.yaml                   (add a "research" section, opt-in)
 requirements.txt                     (add an HTML-parsing dependency)
 tests/test_citation_verifier.py      (new)
@@ -64,7 +64,7 @@ git checkout -b phase-10-deep-research
 ```
 
 2. Add a `research` section to `config/models.yaml`, opt-in and off by
-   default — internet access must never happen just because this code
+   default - internet access must never happen just because this code
    exists:
 
 ```yaml
@@ -79,7 +79,7 @@ research:
 ```
 
    `respect_robots_txt: true` must not be a configurable-to-false toggle you
-   later flip casually — treat it as a hard rule for this project, and only
+   later flip casually - treat it as a hard rule for this project, and only
    the `search_provider`/`max_sources`/timeout values as things you'd
    reasonably tune.
 
@@ -87,11 +87,11 @@ research:
 
    - An abstract `SearchProvider` with `search(query: str, k: int) -> list[SearchResult]`,
      where `SearchResult` has `title`, `url`, `snippet`.
-   - `MockSearchProvider` — returns canned, deterministic results with no
+   - `MockSearchProvider` - returns canned, deterministic results with no
      network call. This is what every test uses.
    - A real provider stub (for example, `BraveSearchProvider` or whichever
      API you choose) that requires an API key from `.env`, following the
-     exact same pattern as Phase 7's cloud provider key handling — never
+     exact same pattern as Phase 7's cloud provider key handling - never
      hardcoded, never logged. Do not implement more than one real provider
      in this phase; one working provider plus the mock is enough.
 
@@ -99,24 +99,23 @@ research:
 
    - `fetch_url(url: str) -> FetchedPage` (with `url`, `text`, `fetched_at`).
      Before fetching, check the URL's `robots.txt` using Python's
-     `urllib.robotparser`, and refuse to fetch if disallowed — this is the
+     `urllib.robotparser`, and refuse to fetch if disallowed - this is the
      practical, automatable part of "respect robots.txt / terms where
      practical"; full Terms of Service compliance can't be automated
      generically, so document that limitation rather than pretending this
      check is a complete legal safeguard.
    - Set a real, identifying `User-Agent` header from
-     `research.user_agent` in config — don't spoof a browser's user agent.
-   - Enforce `fetch_timeout_seconds` and `max_fetch_bytes` — refuse or
+     `research.user_agent` in config - don't spoof a browser's user agent.
+   - Enforce `fetch_timeout_seconds` and `max_fetch_bytes` - refuse or
      truncate anything larger, since an unbounded fetch is both a memory
      risk and a way for a hostile page to waste your run's time.
-   - Convert HTML to plain text (add a lightweight HTML-parsing dependency
-     — `beautifulsoup4` is a reasonable, common choice — to
+   - Convert HTML to plain text (add a lightweight HTML-parsing dependency `beautifulsoup4` is a reasonable, common choice - to
      `requirements.txt` for this) rather than passing raw HTML/script tags
      into a prompt.
 
 5. Create `research/prompt_injection_guard.py`:
 
-   - `sanitize_fetched_content(text: str) -> str` — scans fetched page text
+   - `sanitize_fetched_content(text: str) -> str` - scans fetched page text
      for injection-style patterns aimed at an LLM reading it (for example,
      "ignore previous instructions", "system:", "you are now", instructions
      addressed directly to "the assistant" or "the AI"). Flag or strip
@@ -126,7 +125,7 @@ research:
      example `<untrusted_external_content>...</untrusted_external_content>`)
      with an explicit instruction that the model should treat this block as
      data to analyze, never as instructions to follow. Apply this wrapping
-     convention everywhere fetched content reaches a prompt — this is the
+     convention everywhere fetched content reaches a prompt - this is the
      single most important safeguard in this phase, more so than the
      keyword scan, since keyword matching alone will never catch every
      injection attempt.
@@ -137,38 +136,38 @@ research:
      (returns a stable `source_id`), `get_source(source_id) -> dict | None`,
      and a way to persist the registry for one research run (a simple JSON
      file per run, alongside the existing `runs/<timestamp>/` artifacts, is
-     enough — this doesn't need its own database table unless you want one
+     enough - this doesn't need its own database table unless you want one
      for cross-run lookups later).
 
 7. Create `research/citation_verifier.py`:
 
-   - `extract_claims(report_text: str) -> list[Claim]` — parses
+   - `extract_claims(report_text: str) -> list[Claim]` - parses
      footnote-style citation markers (e.g. `[1]`, `[2]`) out of a generated
      report and associates each with the claim sentence it follows.
-   - `verify_citation(claim: Claim, registry: SourceRegistry) -> bool` —
+   - `verify_citation(claim: Claim, registry: SourceRegistry) -> bool` -
      confirms the cited `source_id` actually exists in the registry, and
      that the source's fetched text actually contains reasonable support
      for the claim (a substring/keyword-overlap check is an acceptable
      baseline; if Phase 9's embeddings are available, a semantic similarity
-     check is a reasonable optional enhancement — but do not make this
+     check is a reasonable optional enhancement - but do not make this
      phase depend on Phase 9 having been implemented).
-   - `detect_contradictions(claims: list[Claim]) -> list[tuple[Claim, Claim]]` —
+   - `detect_contradictions(claims: list[Claim]) -> list[tuple[Claim, Claim]]` -
      a best-effort heuristic flagging pairs of claims that share significant
      topic overlap but assert opposite things (for example, negation words
      near otherwise-similar claim text). Document plainly that this is a
-     heuristic with real false-negative risk, not a guarantee — the goal is
+     heuristic with real false-negative risk, not a guarantee - the goal is
      to catch obvious contradictions, not to solve fact-checking generally.
-   - `reject_unverified_citations(report_text: str, registry: SourceRegistry) -> tuple[str, list[str]]` —
+   - `reject_unverified_citations(report_text: str, registry: SourceRegistry) -> tuple[str, list[str]]` -
      the enforcement step. Returns the report with any unverified claim
      clearly flagged (for example, prefixing it with
      `[UNVERIFIED CITATION]`), plus a list of the specific claims that
      failed verification. A report with any unverified citation must never
-     be presented as a finished, trustworthy result — mirroring exactly how
+     be presented as a finished, trustworthy result - mirroring exactly how
      Phase 2's validators and the existing code-verification hard-fail both
      already refuse to let a high score paper over a real problem.
 
 8. Create `research/run_research.py` as a narrow, separate pipeline entry
-   point rather than forcing this into the existing 7-agent loop — a
+   point rather than forcing this into the existing 7-agent loop - a
    research task has a fundamentally different shape (search → fetch →
    draft-with-citations → verify) than a writing or coding task. It should:
    require `research.internet_enabled: true` in config *and* an explicit
@@ -204,7 +203,7 @@ call (mock the robots.txt response), and `sanitize_fetched_content` flags a
 constructed prompt-injection string.
 
 All tests in this phase must use `MockSearchProvider` and mocked/fake fetch
-responses — never a real network call.
+responses - never a real network call.
 
 ## Verification
 
@@ -232,10 +231,10 @@ pytest tests/ -v
 ## If it fails
 
 - A real fetch call accidentally happens during tests: stop and fix
-  immediately — mock `research/fetcher.py`'s HTTP calls in every test, the
+  immediately - mock `research/fetcher.py`'s HTTP calls in every test, the
   same discipline as never letting Phase 7's tests make a real cloud call.
 - `verify_citation` passes claims that shouldn't verify: check whether the
-  keyword-overlap threshold is too permissive — tune it against a
+  keyword-overlap threshold is too permissive - tune it against a
   deliberately-constructed failing case, not by feel.
 - The injection guard misses an obvious attempt: add that exact string as a
   new regression test case before adjusting the pattern list, the same

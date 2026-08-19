@@ -1,4 +1,4 @@
-# 05 — Phase 0: Repo Audit and Safety Baseline
+# 05 - Phase 0: Repo Audit and Safety Baseline
 
 ## Goal
 
@@ -8,7 +8,7 @@ be measured against.
 
 ## Why it matters
 
-Every phase after this one claims some kind of improvement — fewer model
+Every phase after this one claims some kind of improvement - fewer model
 calls, faster runtime, cleaner constraint handling. You cannot prove any of
 those claims unless you know what "before" looked like. This matters because
 without a baseline, "Phase 3 made routing faster" is just an assertion; with a
@@ -88,7 +88,7 @@ cat config/models.yaml
 
 4. Confirm whether `run.py` and `orchestrator/graph.py` are both still in
    use, or whether one has become dead code. Read both entry points
-   (`run.py`, `run_langgraph.py`) and compare — do they implement the same
+   (`run.py`, `run_langgraph.py`) and compare - do they implement the same
    pipeline logic. If they've drifted apart, note this as a risk for later
    phases rather than silently picking one.
 
@@ -115,19 +115,19 @@ time python run.py \
 
 Copy the resulting `runs/<timestamp>/run_summary.json` somewhere you can
 refer back to later (for example, note the run's timestamp folder name in
-your own notes — do not commit it, since `runs/` is git-ignored on purpose).
+your own notes - do not commit it, since `runs/` is git-ignored on purpose).
 
 6. If you want to fix the `docs/research/README.md` filename mismatch noted
    in `00-overview.md` (it references `2026-07-04-v1-to-v2-architecture-strategy.md`
    and `2026-07-04-cloud-fallback-sonnet-workflow-quality.md`, but the real
    files are the `compass_artifact_wf-...` names), do that now as a single
-   small, isolated edit — it's a documentation correction, not a code change,
+   small, isolated edit - it's a documentation correction, not a code change,
    and it's the kind of thing worth cleaning up before it causes confusion in
    a later phase.
 
 ## Tests to add
 
-None. Phase 0 does not add new test coverage — it confirms existing coverage
+None. Phase 0 does not add new test coverage - it confirms existing coverage
 passes.
 
 ## Verification
@@ -155,7 +155,7 @@ pytest tests/ -v
 ## If it fails
 
 - Ruff or pytest fail on a clean checkout of `main`: stop. This means v1.0.0
-  itself has a regression unrelated to this upgrade guide — fix that on its
+  itself has a regression unrelated to this upgrade guide - fix that on its
   own branch first, before starting any phase work.
 - Ollama isn't running or the small model isn't pulled: skip the baseline
   timing run rather than forcing it. Note in your own records that no
@@ -184,7 +184,7 @@ docs: fix research report filenames referenced in docs/research/README.md
 ```
 
 (Only relevant if you made that one fix. If Phase 0 was purely read-only,
-there is nothing to commit — that's fine, move to Phase 1 with an empty diff.)
+there is nothing to commit - that's fine, move to Phase 1 with an empty diff.)
 
 ## Done when
 
@@ -234,7 +234,7 @@ Report back:
    14B-class models.
 
 Do not modify any file except docs/research/README.md, and only if you find
-a real filename mismatch there — if so, fix only that mismatch, nothing else
+a real filename mismatch there - if so, fix only that mismatch, nothing else
 in the file.
 
 Do not enable cloud calls or change the active provider.

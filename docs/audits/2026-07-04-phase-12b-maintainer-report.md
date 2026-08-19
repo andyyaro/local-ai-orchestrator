@@ -1,4 +1,4 @@
-# Phase 12b Maintainer Report — Fix Coding Mode Classification
+# Phase 12b Maintainer Report - Fix Coding Mode Classification
 
 ## Goal
 
@@ -16,13 +16,13 @@ The Supervisor's mode selection is entirely LLM-driven: it asks
 goal text. There was no deterministic check preventing the model from
 picking a wrong mode for an obviously-coding request. This is exactly the
 same class of problem `orchestrator/router.py` already solves for
-fast/normal/deep path classification — a model call is heuristic and can
+fast/normal/deep path classification - a model call is heuristic and can
 be wrong, so a deterministic backstop is needed wherever a
 misclassification would silently change pipeline behavior.
 
 ## What was built
 
-1. **`orchestrator/mode_classifier.py` (new)** — `has_obvious_coding_signal(goal)`,
+1. **`orchestrator/mode_classifier.py` (new)** - `has_obvious_coding_signal(goal)`,
    a pure regex/word-boundary keyword matcher (no model call) against the
    phase's explicit signal list: code, function, class, script, bug,
    error, traceback, pytest, unit test(s), refactor, implement, write a
@@ -31,22 +31,22 @@ misclassification would silently change pipeline behavior.
    deterministic-classifier design. Word-boundary (`\b`) matching avoids
    substring false positives like `class` inside `classic` or `code`
    inside `codependent`.
-2. **`agents/supervisor.py`** — after parsing the model's own
+2. **`agents/supervisor.py`** - after parsing the model's own
    `REFINED GOAL:`/`MODE:` response, added a guardrail: if the model
    picked a mode other than `coding` or `debugging`, and the **original
    raw goal** (not the model's own refined/rephrased goal) contains an
    obvious coding signal, the mode is force-overridden to `coding` and a
    `[Supervisor] Overriding mode ...` line is printed. Checked against the
-   original goal deliberately — the model's own rephrasing is exactly
+   original goal deliberately - the model's own rephrasing is exactly
    what can drop the signal in the first place, mirroring the
    original-vs-refined-goal precedent already established for hard
    constraint preservation (Phase 6b). The override never fires when the
    model already picked `coding` or `debugging`, so it cannot conflict
    with a correct debugging classification.
-3. **`prompts/supervisor.txt`** — added a `CRITICAL` bullet under "HOW TO
+3. **`prompts/supervisor.txt`** - added a `CRITICAL` bullet under "HOW TO
    REWRITE THE GOAL" instructing the model itself that any goal asking
    for actual code, a function, a class, a script, a bug fix, or tests
-   must be classified `coding`/`debugging`, never `general`/`writing` —
+   must be classified `coding`/`debugging`, never `general`/`writing` -
    defense-in-depth alongside the code-level guardrail, not a replacement
    for it.
 
@@ -60,16 +60,16 @@ the user's raw goal matches at least one of the listed obvious coding
 signals, `mode` is forced to `coding` regardless of what the model picked.
 The Supervisor can still freely choose `coding` or `debugging` on its own,
 and non-coding goals (essays, plans, study explanations) are completely
-unaffected — the guardrail only ever moves classification *toward*
+unaffected - the guardrail only ever moves classification *toward*
 `coding`, never away from it.
 
 ## Tests added
 
-- `tests/test_mode_classifier.py` (new) — 12 true-positive coding goals,
+- `tests/test_mode_classifier.py` (new) - 12 true-positive coding goals,
   5 false-positive non-coding goals, and a dedicated substring-false-positive
-  test (`classic`, `codependent`) — 18 tests total, pure function calls, no
+  test (`classic`, `codependent`) - 18 tests total, pure function calls, no
   model involved.
-- `tests/test_supervisor.py` (new) — exercises the real
+- `tests/test_supervisor.py` (new) - exercises the real
   `SupervisorAgent.run()` with `call_model` monkeypatched to return canned
   text (no real model call): the exact regression case
   (`general`→`coding` override), no-override when the model already says
@@ -77,7 +77,7 @@ unaffected — the guardrail only ever moves classification *toward*
   genuine non-coding goal, override even when the model picks `writing`
   for an obviously-coding goal, and confirmation that ordinary parsing
   (refined goal + mode, e.g. `study`) is unaffected when no override is
-  needed — 6 tests total.
+  needed - 6 tests total.
 
 ## Tests run
 
@@ -99,11 +99,11 @@ result = eval_simple_coding_task()
 
 **First attempt: `fail`.** The Supervisor override worked correctly
 (`[Supervisor] Overriding mode 'general' -> 'coding'`), code verification
-passed, and the Judge scored 100/100 — but the run then failed at the
+passed, and the Judge scored 100/100 - but the run then failed at the
 final Synthesizer step because `qwen2.5-coder:14b` and its fallback
 `llama3.2:3b` both timed out. `ollama ps`/`vm_stat` showed both an 11 GB
 and a 4 GB model loaded simultaneously with very little free memory
-(~295 MB free pages) — a transient local resource/timeout issue, not a
+(~295 MB free pages) - a transient local resource/timeout issue, not a
 classification regression, and out of this phase's scope (memory/model
 scheduling was addressed separately in Phase 6).
 
@@ -136,7 +136,7 @@ coding-signal guardrail)`, `Mode: coding`, `CODE EXECUTION PASSED`,
   `api` can appear in non-coding prose (e.g. "human error", "a bug in the
   plan") and could force a false-positive `coding` classification for an
   edge-case non-coding goal. This is a known, accepted tradeoff, not an
-  oversight — word-boundary matching only prevents substring false
+  oversight - word-boundary matching only prevents substring false
   positives, not phrase-level ambiguity.
 - The eval run that hit a Synthesizer timeout is a reminder that this
   MacBook's memory ceiling makes back-to-back large-model calls

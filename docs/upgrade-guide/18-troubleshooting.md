@@ -1,7 +1,7 @@
-# 18 — Troubleshooting
+# 18 - Troubleshooting
 
 This is a symptom-first index across every phase in this guide. Each entry
-names the likely cause and points to the phase file with the full fix — this
+names the likely cause and points to the phase file with the full fix - this
 page intentionally doesn't repeat the detailed "If it fails" sections
 already in each phase file (`05` through `17`).
 
@@ -29,7 +29,7 @@ Linux runner, or a file that exists locally but was never committed (check
 
 **Stop the runner process immediately.** Then see
 `04-self-hosted-macbook-runner.md` section 4.8 for the disable/rollback
-steps. Re-read section 4.4's hard rules before re-enabling anything —
+steps. Re-read section 4.4's hard rules before re-enabling anything -
 this is the single highest-blast-radius piece of infrastructure in the
 whole guide.
 
@@ -45,13 +45,13 @@ regression test in `tests/test_validators.py` before touching the regex.
 ## "Runs still take a very long time even after Phase 3 and Phase 6"
 
 **Likely cause:** check `run_summary.json`'s `metrics.calls_by_model` (Phase
-5) first — if it shows more than one distinct 14B-class model name, Phase
+5) first - if it shows more than one distinct 14B-class model name, Phase
 6's profile consolidation either wasn't applied to the profile you're
 actually using, or a CLI override (`--model-main`/`--model-fast`) is
 reintroducing a second large model for one run.
 
 **Fix:** see `11-phase-6-memory-discipline.md`. Run
-`pytest tests/test_model_config.py -v` — it should fail loudly if a profile
+`pytest tests/test_model_config.py -v` - it should fail loudly if a profile
 ever mixes two 14B-class models again.
 
 ## "A model call hangs or times out and the whole process seems stuck"
@@ -80,7 +80,7 @@ isn't a subclass of `ModelCallError`.
 `--allow-cloud` was passed. Check the `cloud_calls` SQLite table for the
 exact row (timestamp, role, model, cost) to understand what happened.
 
-**Fix:** see `12-phase-7-cloud-fallback.md` — recall that a real cloud call
+**Fix:** see `12-phase-7-cloud-fallback.md` - recall that a real cloud call
 requires **five independent conditions** to all hold; if one happened
 unexpectedly, one of those five checks has a bug, and that's the priority
 fix before doing anything else.
@@ -91,7 +91,7 @@ fix before doing anything else.
 the old hardcoded `render_status_pill("Local only", "green")` call instead
 of reading `cloud_policy.is_cloud_enabled()`.
 
-**Fix:** see `13-phase-8-streamlit-updates.md` step 4 — this is called out
+**Fix:** see `13-phase-8-streamlit-updates.md` step 4 - this is called out
 specifically because a wrong status indicator is worse than no indicator.
 
 ## "Retrieval returns irrelevant or no results"
@@ -106,7 +106,7 @@ Confirm with `ollama list` before assuming the code is broken.
 
 **This is exactly the failure mode Phase 10 exists to catch.** If it's
 happening after Phase 10 landed, `citation_verifier.py`'s
-`reject_unverified_citations` should have flagged it — check whether the
+`reject_unverified_citations` should have flagged it - check whether the
 report you're looking at actually went through that function, or was shown
 to you before verification ran.
 
@@ -115,11 +115,11 @@ to you before verification ran.
 ## "The coding agent changed a file I didn't expect, or touched this repo itself"
 
 **Stop and treat this as critical.** Check `git status --short` in whatever
-`target_root` you pointed the coding agent at — and separately, in this
+`target_root` you pointed the coding agent at - and separately, in this
 orchestrator repo itself, to confirm nothing here was touched.
 
 **Fix:** see `16-phase-11-coding-agent.md`'s safety warning and "If it
-fails" section — this should never happen if `allow_self_repo` defaults to
+fails" section - this should never happen if `allow_self_repo` defaults to
 `False` and the path-boundary check in `propose_change()` is correct.
 
 ## "I don't know if my branch is actually ready to merge"
@@ -134,6 +134,5 @@ See `17-phase-12-eval-suite-checklist.md` for the full checklist.
 
 ## "I'm not sure which phase caused a regression"
 
-This is exactly why phases live on separate branches with separate commits
-— see `19-rollback-guide.md` for how to isolate and revert a single phase
+This is exactly why phases live on separate branches with separate commits see `19-rollback-guide.md` for how to isolate and revert a single phase
 without undoing others.

@@ -1,11 +1,11 @@
-# Phase 3 Maintainer Report — Routing, Speed, Pipeline Collapse
+# Phase 3 Maintainer Report - Routing, Speed, Pipeline Collapse
 
 Date: 2026-07-04
 Source guide: `docs/upgrade-guide/08-phase-3-routing-speed.md`
 
 ## Phase name
 
-Phase 3 — Routing, Speed, and Pipeline Collapse
+Phase 3 - Routing, Speed, and Pipeline Collapse
 
 ## Branch
 
@@ -35,7 +35,7 @@ tests/test_pipeline_routing.py   (new)
 
 ## Commit SHA
 
-`d9b7517` — "feat: add fast/normal/deep routing to reduce unnecessary model calls"
+`d9b7517` - "feat: add fast/normal/deep routing to reduce unnecessary model calls"
 (squashed into main as `fa3c09a` via PR #5)
 
 ## PR URL
@@ -44,7 +44,7 @@ https://github.com/andyyaro/local-ai-orchestrator/pull/5
 
 ## GitHub Actions result
 
-`lint-and-test` — **pass** (both matrix jobs, ~31-34s each)
+`lint-and-test` - **pass** (both matrix jobs, ~31-34s each)
 
 ## Tests run
 
@@ -56,12 +56,12 @@ pytest tests/ -v
 
 ## Local test result
 
-- `ruff check .` — all checks passed
-- `tests/test_router.py` — 9/9 passed (classify_path fast/deep/normal/override cases,
+- `ruff check .` - all checks passed
+- `tests/test_router.py` - 9/9 passed (classify_path fast/deep/normal/override cases,
   get_path_config for all three paths)
-- `tests/test_pipeline_routing.py` — 2/2 passed (fast path skips Planner artifact
+- `tests/test_pipeline_routing.py` - 2/2 passed (fast path skips Planner artifact
   and Critic/Fixer calls; normal path still runs Planner + one Critic/Fixer loop)
-- Full `tests/` suite — **57/57 passed**
+- Full `tests/` suite - **57/57 passed**
 - Sanity check: `orchestrator.graph.build_graph()` still compiles with the new
   conditional edges (verified via direct import, not part of pytest)
 
@@ -96,7 +96,7 @@ Branches: `main` only (local and remote), tracking `fa3c09a`.
   string as a regression test in `tests/test_router.py` before adjusting
   thresholds/keywords.
 - `run_langgraph.py` (the CLI entry point for the LangGraph pipeline) was
-  **not** modified — it still passes concrete `max_loops`/`threshold` defaults
+  **not** modified - it still passes concrete `max_loops`/`threshold` defaults
   rather than `None`-able CLI flags, and has no `--path` flag. This means the
   new routing structure in `orchestrator/graph.py` is real and tested via
   `build_graph()`, but is not yet reachable end-to-end from that specific CLI.
@@ -106,7 +106,7 @@ Branches: `main` only (local and remote), tracking `fa3c09a`.
   `--path` UX as `run.py`.
 - No live Ollama run was performed to visually confirm "fewer steps printed to
   the terminal" for a real fast-path run (the guide's manual verification
-  step) — this was validated at the unit/pipeline-test level with mocked
+  step) - this was validated at the unit/pipeline-test level with mocked
   agents instead, since no destructive or long-running model calls were
   authorized in this session.
 
@@ -125,7 +125,7 @@ Branches: `main` only (local and remote), tracking `fa3c09a`.
   the guide's own file list anticipated this change in `run.py`.
 - Added a second pipeline-level test (`test_normal_path_runs_planner_and_critic_fixer_loop`)
   beyond the minimum the guide asked for, to lock in that the *non*-fast paths
-  still exercise Planner/Critic/Fixer — this guards against a routing
+  still exercise Planner/Critic/Fixer - this guards against a routing
   regression accidentally collapsing the normal/deep paths too.
 
 ## Safe to start next phase?

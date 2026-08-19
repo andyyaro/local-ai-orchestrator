@@ -1,4 +1,4 @@
-# 11 — Phase 6: MacBook Memory Discipline
+# 11 - Phase 6: MacBook Memory Discipline
 
 ## Goal
 
@@ -10,7 +10,7 @@ memory budget, and never downloading a model automatically.
 
 Repo inspection confirms the exact problem both research reports flagged:
 `config/models.yaml`'s `serious` profile assigns **three different
-14B-class models** across roles —
+14B-class models** across roles -
 
 ```yaml
 serious:
@@ -22,8 +22,7 @@ serious:
   judge: "phi4:14b"
   synthesizer: "qwen2.5:14b"
 ```
-
-— and the `coding` profile does the same with `qwen2.5-coder:14b`,
+ and the `coding` profile does the same with `qwen2.5-coder:14b`,
 `gemma3:12b`, and `phi4:14b`. Each of these is roughly 9GB at Q4_K_M
 quantization. Two 14B-class models cannot be co-resident on a 24GB Mac:
 macOS caps GPU-usable unified memory at roughly two-thirds of total RAM
@@ -31,7 +30,7 @@ macOS caps GPU-usable unified memory at roughly two-thirds of total RAM
 and the OS's own idle footprint are even counted. Ollama's own behavior
 confirms this is costly, not free: when a new model needs to load and there
 isn't room, Ollama queues the request and unloads an idle model to make
-room — and each 14B cold-load from disk costs several seconds up to ~30
+room - and each 14B cold-load from disk costs several seconds up to ~30
 seconds. A single `serious`-profile run today can swap between all three
 large models multiple times across a multi-loop run, and every swap adds
 real, measured wall-clock time on top of already-slow decode speed. **A 14B
@@ -40,7 +39,7 @@ is the single largest lever for cutting the 12m49s runtime, separate from
 Phase 3's call-count reduction.
 
 This matters because Phase 3 (routing) reduces *how many* calls happen, but
-does nothing about *which* models those calls use — a fast-path run that
+does nothing about *which* models those calls use - a fast-path run that
 still alternates between `qwen2.5:14b` and `phi4:14b` for its remaining two
 calls still pays a swap cost. Phase 6 fixes the model mix itself.
 
@@ -48,9 +47,9 @@ calls still pays a swap cost. Phase 6 fixes the model mix itself.
 
 ```text
 config/models.yaml           (fix model mixing within profiles, add low_memory profile)
-docs/model-profiles.md       (new — explains the strategy and memory budget math)
-tests/test_model_config.py   (new — enforces "no two distinct 14B models per profile" as a real test)
-scripts/local_acceptance.sh  (new — manual small-model smoke test script)
+docs/model-profiles.md       (new - explains the strategy and memory budget math)
+tests/test_model_config.py   (new - enforces "no two distinct 14B models per profile" as a real test)
+scripts/local_acceptance.sh  (new - manual small-model smoke test script)
 ```
 
 Files to inspect first (read-only):
@@ -133,25 +132,25 @@ profiles:
      and speed win. If you specifically want an independent Judge model for
      a high-stakes task, override it for that one run with
      `--model-main` pointing Judge elsewhere is not currently possible per-role
-     via the CLI (only main/fast bucket overrides exist) — note this as a
+     via the CLI (only main/fast bucket overrides exist) - note this as a
      known limitation, not something to silently work around in this phase.
    - **`synthesizer` in the `coding` profile stays on `qwen2.5:14b`, not
      `qwen2.5-coder:14b`.** The Synthesizer's job is prose polish of the
      final output, not further code generation, so reusing the coding
      model there would introduce a second resident 14B family for no
-     benefit — keep it on the same family as `serious`'s heavy model, or
+     benefit - keep it on the same family as `serious`'s heavy model, or
      accept the swap cost if you have a specific reason to want
      coder-specific synthesis. Document whichever choice you make.
 
    - **`low_memory` never loads a 14B-class model at all.** This is the
      profile to reach for if a run needs to coexist with other memory
      pressure on your Mac (another app open, low battery thermal throttling,
-     etc.) — it trades output quality for a much smaller and more predictable
+     etc.) - it trades output quality for a much smaller and more predictable
      memory footprint.
 
 3. Set explicit `num_ctx` per profile rather than relying only on the single
    global default. Add a `num_ctx` key under each profile (or a parallel
-   `context_sizes` block keyed by profile name) — `low_memory` should use a
+   `context_sizes` block keyed by profile name) - `low_memory` should use a
    smaller context (e.g. `2048`) than `serious`/`coding` (e.g. `4096`–`8192`),
    since context window size directly multiplies KV cache memory use.
    Update `orchestrator/config_loader.py`'s `get_inference_defaults()` (or add
@@ -166,7 +165,7 @@ profiles:
    14B-class model families without updating this document's reasoning
    first.
 
-5. Create `scripts/local_acceptance.sh` — a small, manual shell script (not
+5. Create `scripts/local_acceptance.sh` - a small, manual shell script (not
    run by any CI workflow) that runs a `bootstrap`-profile pipeline smoke
    test end-to-end and checks the expected artifacts exist:
 
@@ -197,7 +196,7 @@ echo "Local acceptance check passed: ${latest_run}"
 chmod +x scripts/local_acceptance.sh
 ```
 
-   This script does not download any model — it fails loudly via
+   This script does not download any model - it fails loudly via
    `curl --fail` and the subsequent pipeline call if Ollama or the model
    aren't already present, exactly like the Track B workflow in
    `04-self-hosted-macbook-runner.md` does.
@@ -252,12 +251,12 @@ bash scripts/local_acceptance.sh
 ## If it fails
 
 - `local_acceptance.sh` fails because Ollama isn't running or
-  `llama3.2:3b` isn't pulled: this is expected behavior, not a bug — start
+  `llama3.2:3b` isn't pulled: this is expected behavior, not a bug - start
   Ollama and pull the model yourself; the script is intentionally designed
   to fail loudly rather than install anything for you.
 - `test_model_config.py` fails on the *existing* `serious`/`coding`
-  profiles before you've edited them: that's the test doing its job —
-  confirming the original problem — proceed with the profile edits in step 2.
+  profiles before you've edited them: that's the test doing its job -
+  confirming the original problem - proceed with the profile edits in step 2.
 - You genuinely need two different 14B model families for a specific
   experiment: do this as a manual, one-off CLI override
   (`--model-main` / `--model-fast`), not as a permanent profile change, so
@@ -283,7 +282,7 @@ git branch -D phase-6-memory-discipline
 ```
 
 Reverting this phase specifically means going back to the three-distinct-14B-model
-mix — do so deliberately, with the understanding that you're reintroducing
+mix - do so deliberately, with the understanding that you're reintroducing
 the swap-cost problem this phase exists to fix.
 
 ## Commit suggestion
@@ -340,7 +339,7 @@ Implement the following:
    every profile defines all roles in orchestrator.config_loader.VALID_ROLES,
    and that low_memory has zero 14B-class references.
 
-Do not modify agent code, run.py, or orchestrator/graph.py in this phase —
+Do not modify agent code, run.py, or orchestrator/graph.py in this phase -
 this phase only changes configuration, documentation, and a manual script.
 Do not enable cloud calls or change the active provider.
 Do not run `ollama pull` or download any model.

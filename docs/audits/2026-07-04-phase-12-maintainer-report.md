@@ -1,29 +1,29 @@
-# Phase 12 Maintainer Report — Final Eval Suite and Release Checklist
+# Phase 12 Maintainer Report - Final Eval Suite and Release Checklist
 
 ## Goal
 
-Prove the upgraded system actually works — end to end, on real models
-where it matters — before merging any phase branch or requesting a
+Prove the upgraded system actually works - end to end, on real models
+where it matters - before merging any phase branch or requesting a
 release, using one eval suite that exercises every phase built so far
 and one final checklist run every time.
 
 ## What was built
 
-1. **`eval/scenarios.py`** — 11 scenario functions, each returning a
+1. **`eval/scenarios.py`** - 11 scenario functions, each returning a
    plain `EvalResult(name, status, message)` with `status` in
    `{"pass", "fail", "skipped"}`. Every function wraps its phase-specific
    imports in `try:`/`except ImportError` and reports `"skipped"` (never
-   `"fail"`) if that phase isn't present — and, where relevant, if a real
+   `"fail"`) if that phase isn't present - and, where relevant, if a real
    external dependency the scenario needs (a pulled embedding model) is
    genuinely unavailable, since this project never downloads anything
    automatically, including from an eval scenario.
-2. **`eval/run_eval_suite.py`** — CLI runner: imports and executes every
+2. **`eval/run_eval_suite.py`** - CLI runner: imports and executes every
    scenario in `eval.scenarios.ALL_SCENARIOS`, prints a live per-scenario
    result plus a summary table, and exits non-zero only if something
    genuinely failed (a skip never counts as a failure). Includes a
    `sys.path` fix so it works both as `python eval/run_eval_suite.py`
    (the guide's documented invocation) and `python -m eval.run_eval_suite`.
-3. **`tests/test_eval_suite_importable.py`** (CI-safe) — confirms
+3. **`tests/test_eval_suite_importable.py`** (CI-safe) - confirms
    `eval.scenarios` imports cleanly and `ALL_SCENARIOS` is a non-empty
    list of callables, so a typo in an import path is caught automatically
    on every push, without needing a real model in CI.
@@ -38,7 +38,7 @@ and one final checklist run every time.
   while never polluting the user's real `runs/history.db` with synthetic
   cost/budget data.
 - **`eval_local_only_no_cloud`** intentionally uses the real database (no
-  redirect) — it needs a genuine pipeline run to prove no cloud call
+  redirect) - it needs a genuine pipeline run to prove no cloud call
   happened, and a legitimate small-goal run entering real run history is
   the same kind of side effect `scripts/local_acceptance.sh` already
   produces every time a human runs it manually.
@@ -52,7 +52,7 @@ and one final checklist run every time.
   the resilience config's "medium" timeout class is monkeypatched down to
   1 second (guaranteed too short for any real generation) while the
   fallback model's "small" timeout class is left at a generous 60
-  seconds — so the primary model call reliably times out in ~1 second,
+  seconds - so the primary model call reliably times out in ~1 second,
   triggering a genuine fallback, without an artificial sleep or a
   multi-minute wait.
 
@@ -61,20 +61,20 @@ and one final checklist run every time.
 The first full run of `eval_exact_word_limit` reported `FAIL`, but
 inspecting *why* revealed the scenario's own assertion was wrong, not the
 pipeline: the run had correctly detected the constraint violation
-(`stop_reason: hard_fail: ['constraint_violation']`, `passed: False`) —
+(`stop_reason: hard_fail: ['constraint_violation']`, `passed: False`) -
 exactly Phase 2/6b/6c's safety net working as designed on a real model
 call that didn't land within tolerance. The scenario's original logic
 conflated "the raw output doesn't satisfy the word count" with "the
 original silent-pass bug," when the actual regression signature is
-`passed: True` **despite** violating the constraint — that never
+`passed: True` **despite** violating the constraint - that never
 happened. Fixed the scenario to check for that specific signature
 instead, and verified the fix against both:
-- the real observed case (a correctly-refused violation) — now reports
+- the real observed case (a correctly-refused violation) - now reports
   `pass`, confirmed via a scripted replay of the exact real
   `summary`/`final_output` the first run produced (no need to re-run the
   ~18-minute real pipeline call a third time just to re-verify logic);
 - a constructed true-regression case (`passed: True` with a
-  still-violating draft) — confirmed this **still correctly fails**.
+  still-violating draft) - confirmed this **still correctly fails**.
 
 A second full eval suite run with the fix in place completed with
 `eval_exact_word_limit: PASS` in 282.8 seconds.
@@ -87,7 +87,7 @@ cause: the Supervisor classified the goal *"Write a Python function
 called double(n) that returns n multiplied by 2. Include a pytest test
 asserting double(5) == 10."* as `mode: "general"`, not `mode: "coding"`,
 using `llama3.1:8b` (the `serious` profile's default supervisor model).
-Inspected the raw `00_supervisor.json` output directly to confirm this —
+Inspected the raw `00_supervisor.json` output directly to confirm this -
 it is a real, consistent model/prompt behavior, not a fluke or a bug in
 the eval scenario itself (the goal text is about as unambiguously a
 coding task as a goal can be phrased, and `prompts/supervisor.txt`
@@ -96,7 +96,7 @@ programs" as a mode option).
 
 **This was not fixed in this phase.** Phase 12's explicit scope is
 adding the eval suite itself, not modifying `prompts/supervisor.txt` or
-any other pipeline file — and this is precisely the kind of "real-world
+any other pipeline file - and this is precisely the kind of "real-world
 prompt drift a mocked unit test can't catch" the guide describes
 `eval_json_only_judge` as existing to surface. Recorded here as a
 genuine, actionable finding for a future, explicitly-scoped fix (e.g.
@@ -126,7 +126,7 @@ happened to pass.
 ```
 
 `run_eval_suite.py` exited non-zero (1) due to the one genuine failure
-above (`eval_simple_coding_task`) — the checklist item "no genuine
+above (`eval_simple_coding_task`) - the checklist item "no genuine
 failures (skips are fine)" is **not** fully satisfied as of this phase,
 and that's reported honestly rather than hidden.
 
@@ -172,14 +172,14 @@ python eval/run_eval_suite.py             → 9 passed, 1 failed, 1 skipped (see
 ## Remaining risks / TODOs
 
 - **`eval_simple_coding_task` fails against the current `serious` profile
-  and `prompts/supervisor.txt`** — a real, reproducible finding (see
+  and `prompts/supervisor.txt`** - a real, reproducible finding (see
   above), not yet fixed. This is the one concrete, actionable item a
   human should look at before treating the eval suite as fully green.
 - `eval_retrieval` will keep reporting `"skipped"` until
-  `nomic-embed-text` is pulled locally (`ollama pull nomic-embed-text`) —
+  `nomic-embed-text` is pulled locally (`ollama pull nomic-embed-text`) -
   expected and by design, not a bug.
 - The eval suite's real-model scenarios are meaningfully slower than
-  their first-run numbers might suggest across different environments —
+  their first-run numbers might suggest across different environments -
   `eval_exact_word_limit` alone took anywhere from 283s to 1099s across
   three runs in this session, purely from real model variance (retry
   attempts inside the repair loop, JSON-parse retries in the Judge,
@@ -187,7 +187,7 @@ python eval/run_eval_suite.py             → 9 passed, 1 failed, 1 skipped (see
   full suite) when running this before a merge.
 - `scripts/local_acceptance.sh` and a live `streamlit run` launch were not
   re-verified in this specific phase, since Phase 12 makes no pipeline
-  behavior changes — both were already verified in their respective
+  behavior changes - both were already verified in their respective
   phases (6b/6c and 8).
 
 ## Commit

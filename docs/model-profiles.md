@@ -8,28 +8,28 @@ when to reach for `low_memory` instead of `serious` or `coding`.
 
 This project was built and tested on a MacBook Pro (Apple Silicon M3, 24GB
 unified memory). On Apple Silicon, macOS caps the GPU-usable share of
-unified memory at roughly two-thirds of total RAM — about **16GB usable**
+unified memory at roughly two-thirds of total RAM - about **16GB usable**
 on a 24GB machine, once the OS and other running apps are accounted for.
 
 A 14B-class model (`qwen2.5:14b`, `qwen2.5-coder:14b`, `phi4:14b`,
 `gemma3:12b`) is roughly **9GB** at Q4_K_M quantization. Two of them do not
-fit in ~16GB alongside KV cache and the OS's own footprint —
+fit in ~16GB alongside KV cache and the OS's own footprint -
 **a 14B model plus a 3B model can co-reside; two 14B-class models never
 can.**
 
-Ollama does not fail loudly when this happens — it queues the request and
+Ollama does not fail loudly when this happens - it queues the request and
 unloads an idle model to make room. Each 14B cold-load from disk costs
 several seconds up to ~30 seconds. A pipeline run that alternates between
 several different 14B-class models across its roles (Supervisor, Planner,
 Builder, Critic, Fixer, Judge, Synthesizer) pays that swap cost repeatedly,
-on top of already-slow decode speed — often the single largest source of
+on top of already-slow decode speed - often the single largest source of
 wasted wall-clock time in a run, separate from how many calls the pipeline
 makes.
 
 **The rule every profile in this repo follows: at most one distinct
 14B-class model family per profile.** If you edit `config/models.yaml` and
 introduce a second 14B-class model name into an existing profile,
-`tests/test_model_config.py` will fail — that test exists specifically so
+`tests/test_model_config.py` will fail - that test exists specifically so
 this rule can't silently regress, including in a future automated edit.
 
 ## The profiles
@@ -42,23 +42,23 @@ this rule can't silently regress, including in a future automated edit.
 | `coding`     | `qwen2.5-coder:14b`                        | `llama3.1:8b`                             | `llama3.1:8b`   | 1 (`qwen2.5-coder:14b`) | 8192    |
 | `low_memory` | `llama3.1:8b`                              | `llama3.2:3b`                             | `llama3.1:8b`   | 0                     | 2048      |
 
-- **`bootstrap`** — smallest possible footprint, everything on `llama3.2:3b`.
+- **`bootstrap`** - smallest possible footprint, everything on `llama3.2:3b`.
   Use for a quick end-to-end sanity check that the pipeline itself works,
   not for real output quality.
-- **`fast`** — one 8B model for the roles that benefit from more capability
+- **`fast`** - one 8B model for the roles that benefit from more capability
   (builder/fixer/judge/synthesizer), 3B for the roles that don't need it.
   No 14B model at all, so this is cheap to keep resident alongside other
   apps.
-- **`serious`** — the default, general-purpose profile. One 14B-class
+- **`serious`** - the default, general-purpose profile. One 14B-class
   model (`qwen2.5:14b`) handles every role that benefits from stronger
   reasoning (builder, fixer, judge, synthesizer); the lighter roles
   (supervisor, planner, critic) share `llama3.1:8b`, which can stay
   resident next to the 14B model without exceeding the ~16GB ceiling.
-- **`coding`** — same shape as `serious`, but the heavy roles use
+- **`coding`** - same shape as `serious`, but the heavy roles use
   `qwen2.5-coder:14b` instead. **Synthesizer here uses `llama3.1:8b`, not
-  a 14B model at all** — see "Deviation from the original guide draft"
+  a 14B model at all** - see "Deviation from the original guide draft"
   below for why.
-- **`low_memory`** — reach for this when a run needs to coexist with other
+- **`low_memory`** - reach for this when a run needs to coexist with other
   memory pressure on your Mac (another heavy app open, low battery,
   thermal throttling, or you just want the fastest possible turnaround at
   reduced quality). It never loads a 14B-class model and uses a smaller
@@ -68,11 +68,11 @@ this rule can't silently regress, including in a future automated edit.
 ## Deviation from the original guide draft
 
 The Phase 6 upgrade-guide draft's example `coding` profile set
-`synthesizer: "qwen2.5:14b"` — i.e., reuse the *same* family as the
+`synthesizer: "qwen2.5:14b"` - i.e., reuse the *same* family as the
 `serious` profile's heavy model, reasoning that this avoids "introducing a
 second resident 14B family." That reasoning doesn't hold up: `qwen2.5:14b`
 and `qwen2.5-coder:14b` are different weight files with no shared
-residency in Ollama — assigning them to different roles within the same
+residency in Ollama - assigning them to different roles within the same
 profile means **two** distinct 14B-class models can be resident in one
 `coding` run, which is exactly the problem this phase exists to eliminate,
 and which `tests/test_model_config.py` is designed to catch.
@@ -88,11 +88,11 @@ the `coding` profile, consistent with every other profile in this file.
 
 **Fixed in Phase 6b.** `config/models.yaml`'s `mode_overrides` block
 switches `builder`/`fixer` to `qwen2.5-coder:14b` whenever the Supervisor
-classifies a goal's mode as `coding` or `debugging` — regardless of the
+classifies a goal's mode as `coding` or `debugging` - regardless of the
 active profile. Previously, if `active_profile: serious` and a goal got
 classified as `coding`, that run would use `qwen2.5-coder:14b` for
 builder/fixer while judge and synthesizer stayed on `serious`'s
-`qwen2.5:14b` — two resident 14B-class families for that one run, even
+`qwen2.5:14b` - two resident 14B-class families for that one run, even
 though the `serious` profile passes `test_model_config.py`'s per-profile
 checks in isolation.
 
@@ -101,7 +101,7 @@ profile_name=None)` now computes the full role→model mapping for a
 profile+mode combination and, if the merge of profile defaults +
 `mode_overrides` would introduce a second distinct 14B-class model name,
 brings every 14B-class role in line with the override's model instead
-(trusting the override as the more task-relevant choice — e.g. the coder
+(trusting the override as the more task-relevant choice - e.g. the coder
 model for a coding-classified goal). `get_model_for_role()` now delegates
 to this function, so the fix applies everywhere a role's model is resolved.
 See `tests/test_model_config.py`'s `test_effective_role_models_*` tests for
@@ -115,7 +115,7 @@ reads `config/models.yaml`'s `context_sizes` block for the given profile
 any profile not listed there. **Wired into the runtime call path in Phase
 6b:** `run.py`'s `run_pipeline()` computes this once per run and passes it
 as `num_ctx` to every agent constructor, and `orchestrator/graph.py`'s
-`_num_ctx()` helper does the same for each LangGraph node — so KV cache
+`_num_ctx()` helper does the same for each LangGraph node - so KV cache
 footprint actually scales with the active profile's budget rather than
 every agent using a single hardcoded `4096` regardless of profile.
 
@@ -128,7 +128,7 @@ See README.md's "Release Gates" section for the full picture. In short:
 `final_output.txt` were produced, and that the pipeline never silently
 reports `passed: true` for output that actually violates the stated
 constraint (the Phase 6b regression). It does **not** require
-`llama3.2:3b` to actually satisfy a strict word-count constraint — a small
+`llama3.2:3b` to actually satisfy a strict word-count constraint - a small
 model correctly detecting and reporting its own constraint violation is a
 pass here, not a failure (Phase 12c).
 
@@ -137,11 +137,11 @@ stronger model (`llama3.1:8b`) and requires the final output to genuinely
 satisfy the constraint, failing loudly if it doesn't. It is optional for
 the immediate v2.0 tag, since it is slower and more model-dependent.
 
-Both scripts are intentionally not wired into CI — they require Ollama
+Both scripts are intentionally not wired into CI - they require Ollama
 running locally with the relevant model already pulled, and fail loudly
 (never pulling anything for you) if it's missing:
 
 ```bash
-bash scripts/local_acceptance.sh    # smoke test — required for release
-bash scripts/strict_acceptance.sh   # strict quality gate — optional for this tag
+bash scripts/local_acceptance.sh    # smoke test - required for release
+bash scripts/strict_acceptance.sh   # strict quality gate - optional for this tag
 ```

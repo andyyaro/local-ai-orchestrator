@@ -1,7 +1,7 @@
-# Phase 0 Baseline Audit — 2026-07-04
+# Phase 0 Baseline Audit - 2026-07-04
 
 Source: Phase 0 (`docs/upgrade-guide/05-phase-0-repo-audit.md`) executed on
-branch `phase-0-repo-audit`. This is a record of the baseline state — it does
+branch `phase-0-repo-audit`. This is a record of the baseline state - it does
 not implement any upgrade phase.
 
 ## Branch
@@ -82,7 +82,7 @@ stop_reason: "passed (score 81 >= threshold 65)"
 525s (8m45s)
 ```
 
-Notable: this is a single-model run — `llama3.2:3b` was used for **all seven
+Notable: this is a single-model run - `llama3.2:3b` was used for **all seven
 roles** (supervisor, planner, builder, critic, fixer, judge, synthesizer),
 so there was no model-swap cost at all. Nearly 9 minutes for one loop
 iteration on the smallest available model suggests per-call latency/prefill
@@ -94,7 +94,7 @@ the original 12m49s complaint.
 Secondary, non-blocking observation: the Builder's draft (llama3.2:3b) drifted
 off-topic mid-essay into an unrelated "Backpropagation Analogy" section, and
 the Synthesizer's final output ended with a bare "Polished deliverable." line
-rather than substantive polish — small-model output-quality artifacts, not a
+rather than substantive polish - small-model output-quality artifacts, not a
 repo defect, but a relevant data point for evaluating future model-profile
 and prompt changes.
 
@@ -104,13 +104,13 @@ and prompt changes.
    structurally:
    - `orchestrator/graph.py`'s `node_judge()` never calls code verification
      (`verify_draft_code` / `verification_failed`) or an equivalent of
-     `_apply_code_verification_to_verdict()` — the LangGraph pipeline has no
+     `_apply_code_verification_to_verdict()` - the LangGraph pipeline has no
      broken-code hard-fail override at all, unlike `run.py`.
-   - `orchestrator/graph.py` has zero structured logging — no
+   - `orchestrator/graph.py` has zero structured logging - no
      `orchestrator.logger` calls anywhere, unlike `run.py`'s full
      `run_start` / `agent_start` / `agent_end` / `score` / `stop` event trail.
    - `orchestrator/graph.py`'s `node_synthesizer()` writes `run_summary.json`
-     to disk but never calls `save_run()` — LangGraph runs are never
+     to disk but never calls `save_run()` - LangGraph runs are never
      persisted to SQLite and never appear in `show_history.py`.
    - `orchestrator/graph.py`'s hard-fail stop logic treats every hard fail as
      an immediate stop; it is missing `run.py`'s coding-mode special case
@@ -137,11 +137,10 @@ and prompt changes.
 
 4. **Active profile is `serious`**, and per `config/models.yaml` it currently
    assigns three different 14B-class models across roles (`qwen2.5:14b` for
-   builder/fixer/synthesizer, `gemma3:12b` for critic, `phi4:14b` for judge)
-   — this is the exact model-swap problem Phase 6 exists to fix; confirmed
+   builder/fixer/synthesizer, `gemma3:12b` for critic, `phi4:14b` for judge) this is the exact model-swap problem Phase 6 exists to fix; confirmed
    still present and unfixed as of this baseline.
 
-5. `runs/` and `history.db` are correctly git-ignored — prior run
+5. `runs/` and `history.db` are correctly git-ignored - prior run
    directories and the history database are untracked and do not appear in
    `git status --short`.
 
@@ -158,6 +157,6 @@ No source code was modified.
 
 ## Suggested next phase
 
-**Phase 1 — CI foundation** (`docs/upgrade-guide/06-phase-1-ci-foundation.md`),
+**Phase 1 - CI foundation** (`docs/upgrade-guide/06-phase-1-ci-foundation.md`),
 per the v1.1 order defined in `docs/upgrade-guide/20-final-roadmap.md`. Do not
 start Phase 1 until this baseline audit and its findings have been reviewed.

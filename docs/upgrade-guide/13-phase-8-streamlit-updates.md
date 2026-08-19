@@ -1,4 +1,4 @@
-# 13 — Phase 8: Streamlit Updates
+# 13 - Phase 8: Streamlit Updates
 
 ## Goal
 
@@ -6,12 +6,12 @@ Expose the new controls and information from Phases 2–7 (selected path,
 validator failures, metrics summary, cloud status/approval/cost) in the
 Streamlit dashboard, without making the UI flashy or cluttered.
 
-## Why it matters — an important finding this phase must address first
+## Why it matters - an important finding this phase must address first
 
 Direct inspection of `app/streamlit_app.py` found something the earlier
 phases did not account for: **the Streamlit app does not call `run.py`'s
 `run_pipeline()` at all.** It has its own separate, independent
-implementation — `run_pipeline_thread()` (starting around line 183) — which
+implementation - `run_pipeline_thread()` (starting around line 183) - which
 imports the agent classes directly (`SupervisorAgent`, `PlannerAgent`, and so
 on) and reimplements the loop, including its own copies of
 `apply_code_verification_to_verdict()` and `should_break_on_hard_fail()`
@@ -21,37 +21,37 @@ This means the project has **three** parallel pipeline implementations, not
 two: `run.py`, `orchestrator/graph.py` (LangGraph), and now confirmed,
 `app/streamlit_app.py`'s own `run_pipeline_thread()`. Every phase from 2
 through 7 (validators, routing, resilience, metrics, cloud fallback) was
-wired into `run.py` and, where noted, `orchestrator/graph.py` — but **none of
+wired into `run.py` and, where noted, `orchestrator/graph.py` - but **none of
 that logic exists in the Streamlit app's thread today**, and it will not
 appear there automatically.
 
 This matters because "expose new controls in Streamlit" is not just a
-display task — the underlying data (selected path, validator results,
+display task - the underlying data (selected path, validator results,
 metrics, cloud approval state) does not currently flow through the
 Streamlit app's pipeline at all. Before adding UI elements, you have to
 decide how that data gets there. Two options, and the tradeoff to make
 explicitly rather than by default:
 
-**Option A — Refactor `app/streamlit_app.py` to call `run.py`'s
+**Option A - Refactor `app/streamlit_app.py` to call `run.py`'s
 `run_pipeline()` directly** (adapting it to emit progress events to the
 Streamlit event queue instead of `print()`-ing to a terminal), deleting the
 duplicated `apply_code_verification_to_verdict()` /
 `should_break_on_hard_fail()` copies. This is more work up front, but it
 means every future phase only needs to be wired into `run.py` once, and the
 Streamlit app never drifts out of sync again. **This is the recommended
-option** — three copies of the same pipeline logic is exactly the kind of
+option** - three copies of the same pipeline logic is exactly the kind of
 complexity the project should not be carrying, and it is what caused this
 gap to go unnoticed until now.
 
-**Option B — Manually re-port each phase's logic into
+**Option B - Manually re-port each phase's logic into
 `run_pipeline_thread()`** a third time, matching what `run.py` already does.
 This is faster in the short term but guarantees the same problem recurs at
-the next phase — do not choose this option unless you have a specific,
+the next phase - do not choose this option unless you have a specific,
 stated reason `run.py` cannot be safely called from a background thread in
 this app.
 
 This guide recommends Option A. If you choose Option B instead, do so
-explicitly and note it as a deliberate, scoped tradeoff — not a default.
+explicitly and note it as a deliberate, scoped tradeoff - not a default.
 
 ## Files likely touched
 
@@ -86,15 +86,14 @@ git checkout -b phase-8-streamlit-updates
    above, before writing any UI code.
 
 3. If Option A: refactor `run.py`'s `run_pipeline()` so its progress
-   reporting is pluggable — for example, accept an optional `on_step`
+   reporting is pluggable - for example, accept an optional `on_step`
    callback parameter that both the terminal (`print`-based) and Streamlit
    (`event_queue`-based) callers can pass in, rather than `run_pipeline()`
    calling `print()` directly. Then have `app/streamlit_app.py` import and
    call `run_pipeline()` from a background thread, passing a callback that
    posts to `event_queue` (reusing the existing `emit_step()` helper's
    shape). Delete `run_pipeline_thread()`'s duplicated
-   `apply_code_verification_to_verdict()` and `should_break_on_hard_fail()`
-   — they should no longer exist once the app calls the real
+   `apply_code_verification_to_verdict()` and `should_break_on_hard_fail()` they should no longer exist once the app calls the real
    `run_pipeline()`.
 
 4. Add UI elements, without over-designing:
@@ -105,38 +104,38 @@ git checkout -b phase-8-streamlit-updates
      completes, read from `summary["path"]`.
    - **Validator failures** (Phase 2): if `run_summary.json`'s
      `validator_failures` (via Phase 5's metrics) is non-empty, show it
-     plainly in the run results area — the specific rule that failed and
+     plainly in the run results area - the specific rule that failed and
      its detail message, not just a generic "failed" indicator.
    - **Metrics summary** (Phase 5): a compact table or small set of
      captions showing total runtime, per-agent time breakdown, and
-     `calls_by_model` — this is the view that lets you visually confirm
+     `calls_by_model` - this is the view that lets you visually confirm
      Phase 6 actually reduced distinct large-model usage in one run. Do not
      build a full charting dashboard here; a plain `st.dataframe` or a
      handful of `st.metric()` calls is enough.
    - **Cloud disabled/enabled status** (Phase 7): replace the hardcoded
      `render_status_pill("Local only", "green")` with one that actually
-     reads `cloud_policy.is_cloud_enabled()` — it must not keep claiming
+     reads `cloud_policy.is_cloud_enabled()` - it must not keep claiming
      "Local only" once cloud fallback has been enabled in config, since a
      hardcoded status pill that doesn't reflect real config is worse than
      no pill at all.
    - **Cloud cost preview and approval panel** (Phase 7): if cloud fallback
      is enabled and a role's step is about to be escalated, show the exact
      payload preview and estimated cost `orchestrator/cloud_policy.py`
-     already builds, with an explicit approve/deny button — this is the
+     already builds, with an explicit approve/deny button - this is the
      same human-gate from Phase 7, just rendered in the UI instead of a
      terminal `y`/`n` prompt. Do not add a "remember my choice" or
-     "always approve" toggle — every cloud call gets its own explicit
+     "always approve" toggle - every cloud call gets its own explicit
      approval, by design.
    - **Fallback events** (Phase 4): if a run recorded a model fallback
-     (Phase 5's `fallbacks` count), surface it plainly — for example
-     "Judge fell back from qwen2.5:14b to llama3.2:3b after a timeout" —
+     (Phase 5's `fallbacks` count), surface it plainly - for example
+     "Judge fell back from qwen2.5:14b to llama3.2:3b after a timeout" -
      so a degraded-quality run is visible, not silent.
 
 5. Keep the existing model-override dropdowns (sidebar, around lines
    762–795) but confirm their hardcoded option lists (`"qwen2.5:14b"`,
    `"qwen2.5-coder:14b"`, `"phi4:14b"`, `"gemma3:12b"`, and so on) still
    match whatever Phase 6 actually settled on for the `serious`/`coding`
-   profiles — if Phase 6 changed which models are used for which roles,
+   profiles - if Phase 6 changed which models are used for which roles,
    these dropdowns need to match, or they'll offer choices that don't
    correspond to what the profiles actually do anymore.
 
@@ -173,20 +172,20 @@ streamlit run app/streamlit_app.py
 - The Streamlit import smoke test passes.
 - Launching the dashboard manually and running a real small-model goal
   shows the new path/validator/metrics/cloud-status elements without the
-  page becoming visually cluttered — if you can't describe what happened in
+  page becoming visually cluttered - if you can't describe what happened in
   a run by glancing at the results area for a few seconds, it's too busy.
 
 ## If it fails
 
 - After refactoring to call `run.py`'s `run_pipeline()`, the Streamlit
   thread hangs or the UI doesn't update: check that the `on_step` callback
-  is actually thread-safe with Streamlit's `event_queue` pattern — the
+  is actually thread-safe with Streamlit's `event_queue` pattern - the
   existing `emit_step()` helper already handles this correctly for the old
   inline implementation, so reuse its exact queue-posting mechanism rather
   than inventing a new one.
 - The cloud approval panel doesn't appear even with `cloud.enabled: true`:
   confirm `--allow-cloud`'s CLI-flag gate from Phase 7 has a UI equivalent
-  (a checkbox or toggle) — a UI run has no command line, so Phase 7's
+  (a checkbox or toggle) - a UI run has no command line, so Phase 7's
   CLI-flag condition needs a corresponding UI control, not silent bypassing.
 - The model-override dropdowns list models that Phase 6 no longer uses in
   any profile: update the dropdown option lists to match Phase 6's actual
@@ -223,7 +222,7 @@ refactor: unify Streamlit app on run.py's pipeline and surface path/validator/me
 The Streamlit UI shows what the orchestrator did without becoming visually
 messy: selected path, validator failures, a compact metrics summary, real
 (non-hardcoded) cloud status, cloud cost/approval when applicable, and
-fallback events — and, if Option A was taken, app/streamlit_app.py no longer
+fallback events - and, if Option A was taken, app/streamlit_app.py no longer
 contains a duplicated copy of pipeline logic that exists in run.py.
 ```
 

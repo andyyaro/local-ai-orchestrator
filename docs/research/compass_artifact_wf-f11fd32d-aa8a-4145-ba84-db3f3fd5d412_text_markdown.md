@@ -2,22 +2,22 @@
 
 ## 1. Executive summary
 
-Optional cloud fallback for Local AI Orchestrator should be designed as an **off-by-default, per-role, per-trigger, human-gated escalation layer** that sends the *smallest possible sanitized payload* — most often the Judge step or the final Synthesizer step, not the whole task — to a single frontier model (Claude Sonnet 5 is the best-fit default), with deterministic cost and secret-scanning guards in front of every external call. This is the single most defensible way for a 24 GB M3 MacBook to approach "Sonnet 5-level" *workflow* output without pretending a local model has become a frontier model.
+Optional cloud fallback for Local AI Orchestrator should be designed as an **off-by-default, per-role, per-trigger, human-gated escalation layer** that sends the *smallest possible sanitized payload* - most often the Judge step or the final Synthesizer step, not the whole task - to a single frontier model (Claude Sonnet 5 is the best-fit default), with deterministic cost and secret-scanning guards in front of every external call. This is the single most defensible way for a 24 GB M3 MacBook to approach "Sonnet 5-level" *workflow* output without pretending a local model has become a frontier model.
 
 Sonnet 5 is a real, current Anthropic model. Per Anthropic's launch post "Introducing Claude Sonnet 5" (June 30, 2026), it is priced at "$2 per million input tokens and $10 per million output tokens through August 31, 2026, after which it will be priced at $3 per million input tokens and $15 per million output tokens"; the model ID is `claude-sonnet-5`, with a 1M-token context window and 128K max output, and it is positioned as "the most agentic Sonnet yet" and a drop-in replacement for Sonnet 4.6. Because Anthropic publishes only limited head-to-head benchmarks for it, we anchor "Sonnet 5-level" to a small set of measurable proxies (SWE-bench-style coding, strict-constraint compliance, citation reliability, long-horizon completion) and distinguish four different things the phrase could mean: model quality, workflow quality, agent-system quality, and product quality. Local Orchestrator cannot match Sonnet 5's raw single-model quality, but on *narrow, verifiable task classes* (constraint-checked writing, test-passing single-file code, citation-verified research) a verifier-guided local-first loop with optional cloud fallback can reach practical parity.
 
-The previous report was directionally correct — the bottlenecks are architectural, not hardware, and cloud fallback is the realistic path to frontier-level workflow quality — but it left the entire fallback design (routing, privacy, cost, implementation, evaluation) unspecified, and it repeated the README's claim that "OpenAI and Anthropic stubs exist" without noting that the repo's own roadmap still lists provider support as an open TODO, meaning those stubs are almost certainly minimal placeholders rather than working adapters.
+The previous report was directionally correct - the bottlenecks are architectural, not hardware, and cloud fallback is the realistic path to frontier-level workflow quality - but it left the entire fallback design (routing, privacy, cost, implementation, evaluation) unspecified, and it repeated the README's claim that "OpenAI and Anthropic stubs exist" without noting that the repo's own roadmap still lists provider support as an open TODO, meaning those stubs are almost certainly minimal placeholders rather than working adapters.
 
 ## 2. What the previous report did not fully answer
 
 The v1.0.0→v2.0 report established the right conclusions (architecture-limited, not hardware-limited; MacBook sufficient for a portfolio-grade local-first orchestrator; cloud fallback the plausible path to frontier quality) but under-specified six things this follow-up resolves:
 
-1. **How fallback is actually designed** — modes, what leaves the machine, defaults, consent.
-2. **Which cloud model to use and why** — with primary-source specs/pricing, chosen on fit not popularity.
-3. **Which of the seven agent roles benefit** — and what to send for each.
-4. **Triggering/routing logic** — a concrete policy matrix, automatic vs. approval-gated.
-5. **Privacy, security, cost governance** — redaction, secret-scanning, budgets, audit trail.
-6. **Concrete repo-level implementation and evaluation** — files to add/change, tests, and a benchmark that proves fallback was worth it.
+1. **How fallback is actually designed** - modes, what leaves the machine, defaults, consent.
+2. **Which cloud model to use and why** - with primary-source specs/pricing, chosen on fit not popularity.
+3. **Which of the seven agent roles benefit** - and what to send for each.
+4. **Triggering/routing logic** - a concrete policy matrix, automatic vs. approval-gated.
+5. **Privacy, security, cost governance** - redaction, secret-scanning, budgets, audit trail.
+6. **Concrete repo-level implementation and evaluation** - files to add/change, tests, and a benchmark that proves fallback was worth it.
 
 ## 3. Repo verification findings (grounded in actual inspection)
 
@@ -29,16 +29,16 @@ I directly fetched and read the repository's `README.md` and `run.py`. I attempt
 - **Deterministic code verification with hard-fail override is real**: `verify_draft_code()` / `verification_failed()` from `orchestrator.code_runner`; `_apply_code_verification_to_verdict()` forces `pass=False`, `total_score=0`, and appends a `broken_code` hard-fail so a high Judge score cannot rescue broken code.
 - **Structured JSON logging is real**: `get_logger()` emits `run_start`, `agent_start`, `agent_end`, `score`, `code_verification`, `stop`, `error` events.
 - **SQLite persistence is real**: `save_run(...)` and `init_db()` from `orchestrator.database`; per-run artifacts written to `runs/<timestamp>/` including `run_summary.json`, `best_draft.txt`, `final_output.txt`, `loopNN_*.{txt,json}`.
-- Stop conditions: pass-threshold, stall (`min_improvement`), hard-fail, max-loops — all present.
+- Stop conditions: pass-threshold, stall (`min_improvement`), hard-fail, max-loops - all present.
 
 **Verified from `README.md`:**
 - Feature bullet: *"Provider-ready adapter layer: Ollama is the default; OpenAI and Anthropic stubs exist for future expansion."*
 - Planned Improvements includes an **unchecked** item: *"Add optional OpenAI or Anthropic provider support through config"* and *"Add RAG over previous runs or local documents."*
 - Profiles documented: `bootstrap`, `fast`, `serious`, `coding`, selected by `active_profile:`; modes: Writing, Coding, Planning, Debugging, Study, General; `config/modes.yaml` exists.
-- The repo also contains `run_langgraph.py`, `run_phase2.py`, `run_phase3.py` (not in the follow-up's stated file list) — evidence the project has already experimented with a LangGraph execution path and phased runners.
+- The repo also contains `run_langgraph.py`, `run_phase2.py`, `run_phase3.py` (not in the follow-up's stated file list) - evidence the project has already experimented with a LangGraph execution path and phased runners.
 - Safety notes already state ".env, .venv/, runs/, logs/ are ignored by Git" and "No data is sent to paid APIs by default."
 
-**Unverified but strongly implied (could not read source):** the exact class layout of `adapters.py` (whether a base adapter class and named `OpenAIAdapter`/`AnthropicAdapter` classes literally exist, even as `NotImplementedError` stubs); the exact per-profile keys in `models.yaml` and whether any provider/cloud field already exists; the exact SQLite schema (table/column names) in `database.py`. The follow-up's file list also references `agents/base_agent.py` and `orchestrator/state.py` — the README file tree confirms `config_loader.py` and a `tests/` directory but does **not** list `base_agent.py` or `state.py`, so those specific files are unconfirmed.
+**Unverified but strongly implied (could not read source):** the exact class layout of `adapters.py` (whether a base adapter class and named `OpenAIAdapter`/`AnthropicAdapter` classes literally exist, even as `NotImplementedError` stubs); the exact per-profile keys in `models.yaml` and whether any provider/cloud field already exists; the exact SQLite schema (table/column names) in `database.py`. The follow-up's file list also references `agents/base_agent.py` and `orchestrator/state.py` - the README file tree confirms `config_loader.py` and a `tests/` directory but does **not** list `base_agent.py` or `state.py`, so those specific files are unconfirmed.
 
 ## 4. Prior-report claims to correct, confirm, or revisit
 
@@ -68,7 +68,7 @@ Define six explicit modes, selectable in config, with `local-first` (fallback di
 | **frontier/deep** | Larger context (compressed state) for a hard reasoning/research step | Any single role, one call | Explicit per-run confirmation | Opt-in |
 | **cloud-only** | Whole task | All | Explicit; defeats the project's premise | **Discouraged** |
 
-**What to actually send on fallback (ranked from safest to riskiest):** (1) compressed local summary of the draft + rubric; (2) Judge-only payload (draft + scoring schema); (3) final synthesis payload (best draft + goal); (4) hardest reasoning sub-question only; (5) retrieved context snippets; (6) sanitized full state; (7) whole raw state (avoid by default). The controller — plain Python, not an LLM — decides which tier applies. Fallback must **never** default to "send the whole task to the cloud."
+**What to actually send on fallback (ranked from safest to riskiest):** (1) compressed local summary of the draft + rubric; (2) Judge-only payload (draft + scoring schema); (3) final synthesis payload (best draft + goal); (4) hardest reasoning sub-question only; (5) retrieved context snippets; (6) sanitized full state; (7) whole raw state (avoid by default). The controller - plain Python, not an LLM - decides which tier applies. Fallback must **never** default to "send the whole task to the cloud."
 
 ## 6. Cloud provider/model comparison
 
@@ -80,7 +80,7 @@ Primary-source specs (July 2026). Prices are per **million** tokens (input/outpu
 | **Claude Opus 4.8** | $5/$25 | 1M | Highest Anthropic accuracy; agentic-coding leader | Reserve for the *hardest* escalations only (cost 2.5× Sonnet 5) |
 | **Gemini 3.1 Pro** | $2/$12 (≤200K), $4/$18 above | up to 2M | Largest context; strong reasoning | Best when *long context* is the bottleneck; cross-family Judge |
 | **OpenAI GPT-5.4** | $2.50/$15 | large | Broad ecosystem; strong tools | Viable alternate Judge/Builder; slightly pricier output |
-| **DeepSeek V3.2** | ~$0.23/$0.34 | ~164K | Cheapest serious option; sparse attention (DSA) | Best cost/quality for high-volume Judge; **but Chinese provider with no ZDR offering — avoid for sensitive local content** |
+| **DeepSeek V3.2** | ~$0.23/$0.34 | ~164K | Cheapest serious option; sparse attention (DSA) | Best cost/quality for high-volume Judge; **but Chinese provider with no ZDR offering - avoid for sensitive local content** |
 | **Mistral (Devstral/large)** | low | mid | Open-weight lineage; EU provider | Good EU-privacy alternative; strong for coding |
 
 **Recommendation:** default single provider = **Claude Sonnet 5** (best agentic completion + instruction-following at Sonnet price, mature JSON-schema/tool support, strong prompt-injection resistance, and a documented short API retention with ZDR available). Offer **Gemini 3.1 Pro** as the long-context option and **DeepSeek V3.2** as an explicit "cheap mode" the user must opt into with a data-sensitivity warning. Do not hard-wire one provider; route through the existing adapter layer.
@@ -96,13 +96,13 @@ Note on Sonnet 5 tokenizer: per Anthropic's launch post, "the same input can map
 | **Supervisor** | Yes | Rarely | Ambiguous goal classification | Goal text only | Low | Mode-classification accuracy |
 | **Planner** | Yes | Long-horizon/complex plans | Task classified "deep" | Refined goal + constraints | Medium | Plan completeness score |
 | **Builder** | Yes | Hard multi-file coding | Local code fails tests N× | Spec + failing tests | High on hard code | pass@1 after escalation |
-| **Critic** | Yes | No | — | — | Low | — |
+| **Critic** | Yes | No | - | - | Low | - |
 | **Fixer** | Yes | Repeated repair failure | Tests still fail after repairs | Diff + error trace | High | Test-pass recovery rate |
 | **Judge** | Yes | **Best single fallback** | Low/uncertain local score, or cross-check | Draft + rubric schema | High (calibration) | Judge–human agreement |
 | **Synthesizer** | Yes | **Best single fallback** | User wants "frontier quality" final | Best draft + goal | High (polish) | Human preference win-rate |
-| **Code verifier** | **Always local/deterministic** | **Never** | — | — | N/A | Deterministic pass/fail |
+| **Code verifier** | **Always local/deterministic** | **Never** | - | - | N/A | Deterministic pass/fail |
 
-**Cloud Judge vs local Judge:** the strongest, cheapest win. Local LLM-as-judge suffers documented self-preference bias — Wataoka et al., "Self-Preference Bias in LLM-as-a-Judge" (arXiv:2410.21819), show LLM evaluators overestimate their own outputs, and NeurIPS 2024 work links self-recognition ability to self-preference strength — plus position and verbosity biases. A cross-family cloud Judge (e.g., a Claude draft judged by Gemini, or vice-versa) reduces self-preference bias and better calibrates the score that drives the whole improvement loop. **Cloud Synthesizer** is the second-best win: one final polish call materially lifts perceived output quality at one-call cost. **Cloud Builder/Fixer** helps most on genuinely hard coding but is the riskiest for cost and code exfiltration. The deterministic verifier must always stay local — it is code, not a model.
+**Cloud Judge vs local Judge:** the strongest, cheapest win. Local LLM-as-judge suffers documented self-preference bias - Wataoka et al., "Self-Preference Bias in LLM-as-a-Judge" (arXiv:2410.21819), show LLM evaluators overestimate their own outputs, and NeurIPS 2024 work links self-recognition ability to self-preference strength - plus position and verbosity biases. A cross-family cloud Judge (e.g., a Claude draft judged by Gemini, or vice-versa) reduces self-preference bias and better calibrates the score that drives the whole improvement loop. **Cloud Synthesizer** is the second-best win: one final polish call materially lifts perceived output quality at one-call cost. **Cloud Builder/Fixer** helps most on genuinely hard coding but is the riskiest for cost and code exfiltration. The deterministic verifier must always stay local - it is code, not a model.
 
 ## 8. Fallback POLICY MATRIX (triggers)
 
@@ -131,26 +131,26 @@ Every fallback writes a structured record (reason, role, provider, model, tokens
 - **Never send by default:** contents of `.env`, secrets/keys/tokens, full repository/file trees, run-history database, anything a secret-scanner flags, PII.
 - **Requires explicit confirmation:** any file content, full pipeline state, code being debugged, research corpora.
 - **Safe to send after sanitization:** the specific draft/rubric for the escalated step, compressed summaries, the user's own goal text.
-- **Dry-run preview + inspect-before-send:** yes to both — before any external call the user sees the *exact* payload and its token/cost estimate and must approve. This is the single most important control.
+- **Dry-run preview + inspect-before-send:** yes to both - before any external call the user sees the *exact* payload and its token/cost estimate and must approve. This is the single most important control.
 - **Secret detection before every cloud call:** run a scanner (e.g., **gitleaks** or Yelp **detect-secrets**) over the outbound payload; block on any hit. Both are standard, free, and support pre-commit/CI integration. This maps to OWASP Top 10 for LLM Applications (2025): LLM01 Prompt Injection (the #1 risk for the second consecutive edition), LLM02 Sensitive Information Disclosure, and LLM06 Excessive Agency.
-- **Prompt-injection posture:** treat any retrieved/file content as untrusted. Adopt the **dual-LLM / quarantine pattern** (Simon Willison, 2023) — a privileged LLM holds tools/plans but never reads untrusted content, while a quarantined LLM reads untrusted content but has no tools and returns only structured/symbolic output. Google DeepMind's CaMeL extends this: per Debenedetti et al., "Defeating Prompt Injections by Design" (arXiv:2503.18813), CaMeL solved "77% of tasks with provable security (compared to 84% with an undefended system) in AgentDojo." Apply the pattern so a privileged cloud call never sees raw untrusted tokens directly.
+- **Prompt-injection posture:** treat any retrieved/file content as untrusted. Adopt the **dual-LLM / quarantine pattern** (Simon Willison, 2023) - a privileged LLM holds tools/plans but never reads untrusted content, while a quarantined LLM reads untrusted content but has no tools and returns only structured/symbolic output. Google DeepMind's CaMeL extends this: per Debenedetti et al., "Defeating Prompt Injections by Design" (arXiv:2503.18813), CaMeL solved "77% of tasks with provable security (compared to 84% with an undefended system) in AgentDojo." Apply the pattern so a privileged cloud call never sees raw untrusted tokens directly.
 - **API-key storage:** local `.env` only (already git-ignored), loaded via `python-dotenv`; never logged, never committed; redact in all logs.
 - **Provider retention:** prefer providers with strong defaults. Anthropic's Claude API does not use API data for model training and, per multiple 2026 sources, reduced standard API log retention from 30 to **7 days** (effective September 14, 2025), with Zero Data Retention available for qualifying accounts (Messages and Token-Counting APIs are ZDR-eligible per Anthropic docs). OpenAI's API defaults to 30-day retention with no training by default; DeepSeek offers no ZDR and should carry a warning.
 - **Audit trail:** every cloud request logged with redacted payload hash, provider, model, tokens, cost, and approval event; stored in SQLite for later review in Streamlit.
 
 ## 10. Cost controls
 
-- **Pre-call estimate:** count tokens with the provider's own counter (Anthropic `count_tokens` endpoint; `tiktoken` for OpenAI-family) — character/4 heuristics are unreliable for code and undercount tool/schema overhead, and tiktoken "typically undercounts other model families, especially on code or non-English text." Sonnet 5's tokenizer shift (1.0–1.35×) makes provider-native counting mandatory for accuracy.
+- **Pre-call estimate:** count tokens with the provider's own counter (Anthropic `count_tokens` endpoint; `tiktoken` for OpenAI-family) - character/4 heuristics are unreliable for code and undercount tool/schema overhead, and tiktoken "typically undercounts other model families, especially on code or non-English text." Sonnet 5's tokenizer shift (1.0–1.35×) makes provider-native counting mandatory for accuracy.
 - **Budgets:** per-run max, daily, and monthly caps in config. **Block the call if the estimate exceeds the cap** (fail closed), showing the user the number and letting them raise the cap explicitly.
 - **Local compression before cloud:** summarize/trim state locally to cut input tokens before any external call; "cloud only for final synthesis" and "cloud only after local failure" are the two cheapest patterns.
 - **Post-call:** save actual input/output tokens and computed cost per provider into SQLite; show a running total and per-run cost in Streamlit; keep a cost history table.
-- **Quality-vs-cost setting:** yes — expose a slider mapping to (a) local-only, (b) cloud-Judge-only, (c) cloud-Synthesizer-only, (d) cloud-on-hard-steps, (e) frontier-max. This mirrors Anthropic's own `effort` control and Gemini's Model Optimizer cost/quality/balance modes.
+- **Quality-vs-cost setting:** yes - expose a slider mapping to (a) local-only, (b) cloud-Judge-only, (c) cloud-Synthesizer-only, (d) cloud-on-hard-steps, (e) frontier-max. This mirrors Anthropic's own `effort` control and Gemini's Model Optimizer cost/quality/balance modes.
 
 ## 11. Implementation plan for the current repo
 
 Design goal: **add fallback without rewriting the project.** Reuse the existing adapter layer, config loader, logger, and SQLite.
 
-**`config/models.yaml`** — add a `cloud` block (disabled by default):
+**`config/models.yaml`** - add a `cloud` block (disabled by default):
 ```yaml
 cloud:
   enabled: false
@@ -164,15 +164,15 @@ cloud:
   privacy: { require_preview: true, scan_secrets: true, redact_logs: true }
   triggers: { low_judge_score: 55, tests_fail_repeats: 2, latency_budget_s: 300, user_frontier: true }
 ```
-**`orchestrator/adapters.py`** — flesh out the (currently placeholder) provider stubs behind a common `BaseAdapter.generate(prompt, **opts)` interface: `OllamaAdapter` (existing HTTP call to `localhost:11434`), plus real `AnthropicAdapter`, `OpenAIAdapter`, `GoogleAdapter`, `DeepSeekAdapter`, each reading its key from env and returning `(text, usage_tokens)`.
-**`orchestrator/router.py`** (new) — given `(role, mode, local_result, triggers, budget)`, decide local vs. cloud and which payload tier; returns a routing decision object, no LLM calls itself.
-**`orchestrator/cloud_policy.py`** (new) — evaluates the policy matrix; enforces `roles_allowed`, approval requirement, and mode.
-**`orchestrator/cost_tracker.py`** (new) — pre-call estimate, budget check (fail-closed), post-call actuals, SQLite writes.
-**`orchestrator/privacy_guard.py`** (new) — secret scan (gitleaks/detect-secrets), PII regex, payload sanitizer/compressor, dry-run preview builder.
-**`run.py`** — wrap each `_log_agent_call` so that after the local call the router may escalate; add `--allow-cloud`, `--cloud-provider`, `--max-cost`, `--frontier` flags; extend `run_summary.json` with a `fallback_events[]` array.
-**`app/streamlit_app.py`** — add a Cloud panel: enable toggle, provider/model pick, budget inputs, live cost meter, per-call preview/approve dialog, and a fallback-events view.
-**SQLite schema** — add `cloud_calls(run_id, role, provider, model, tokens_in, tokens_out, est_cost, actual_cost, reason, approved, ts)` and a `cost_daily` rollup; extend the runs table with `cloud_cost_total`.
-**Logging** — add `fallback_trigger`, `cloud_request`, `cloud_response`, `budget_block` events.
+**`orchestrator/adapters.py`** - flesh out the (currently placeholder) provider stubs behind a common `BaseAdapter.generate(prompt, **opts)` interface: `OllamaAdapter` (existing HTTP call to `localhost:11434`), plus real `AnthropicAdapter`, `OpenAIAdapter`, `GoogleAdapter`, `DeepSeekAdapter`, each reading its key from env and returning `(text, usage_tokens)`.
+**`orchestrator/router.py`** (new) - given `(role, mode, local_result, triggers, budget)`, decide local vs. cloud and which payload tier; returns a routing decision object, no LLM calls itself.
+**`orchestrator/cloud_policy.py`** (new) - evaluates the policy matrix; enforces `roles_allowed`, approval requirement, and mode.
+**`orchestrator/cost_tracker.py`** (new) - pre-call estimate, budget check (fail-closed), post-call actuals, SQLite writes.
+**`orchestrator/privacy_guard.py`** (new) - secret scan (gitleaks/detect-secrets), PII regex, payload sanitizer/compressor, dry-run preview builder.
+**`run.py`** - wrap each `_log_agent_call` so that after the local call the router may escalate; add `--allow-cloud`, `--cloud-provider`, `--max-cost`, `--frontier` flags; extend `run_summary.json` with a `fallback_events[]` array.
+**`app/streamlit_app.py`** - add a Cloud panel: enable toggle, provider/model pick, budget inputs, live cost meter, per-call preview/approve dialog, and a fallback-events view.
+**SQLite schema** - add `cloud_calls(run_id, role, provider, model, tokens_in, tokens_out, est_cost, actual_cost, reason, approved, ts)` and a `cost_daily` rollup; extend the runs table with `cloud_cost_total`.
+**Logging** - add `fallback_trigger`, `cloud_request`, `cloud_response`, `budget_block` events.
 
 ## 12. Testing and evaluation plan for fallback
 
@@ -210,7 +210,7 @@ Crucially distinguish: **model quality** (raw Sonnet 5), **workflow quality** (m
 - **Verifier-guided refinement** ("Self-Trained Verification…", arXiv:2605.30290): an STV-guided Qwen3-8B generator beat the 4× larger Qwen3-32B generator on hard reasoning splits, evidence that "a good verifier provides gains beyond what a much stronger generator can achieve."
 - **Execution/test feedback** (CRITIC, Self-Debugging) reliably beats single-shot on code.
 
-The orchestrator already has the two hardest pieces — a deterministic code verifier and a scored improvement loop — so on constraint-checked writing, test-passing single-file code, and citation-verified research it can reach practical parity with a Sonnet 5 single shot. It will *not* match Sonnet 5 on cross-repo refactors, novel long-horizon planning, or open-ended reasoning where local 14B models plateau; those are exactly where cloud fallback earns its cost.
+The orchestrator already has the two hardest pieces - a deterministic code verifier and a scored improvement loop - so on constraint-checked writing, test-passing single-file code, and citation-verified research it can reach practical parity with a Sonnet 5 single shot. It will *not* match Sonnet 5 on cross-repo refactors, novel long-horizon planning, or open-ended reasoning where local 14B models plateau; those are exactly where cloud fallback earns its cost.
 
 ## 15. Architecture path to approach Sonnet 5-level output
 
@@ -252,19 +252,19 @@ Reasoning: deterministic validators flip strict-format tasks *above* a Sonnet si
 | # | Task name | Type | Ground truth / scoring | Deterministic checks | LLM-judge | Human | Runtime target | Cost target | Pass threshold |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | 120-word explainer | strict writing | exact word count | word-count validator | quality rubric | spot | <3 min local | $0 | count exact + rubric ≥80 |
-| 2 | `fibonacci(n)` + pytest | coding | tests pass | pytest_runner | — | — | <4 min | $0 | 100% tests |
-| 3 | Multi-file refactor | multi-file coding | test suite green | pytest across files | — | review | <8 min | ≤$0.10 (fallback) | tests pass |
+| 2 | `fibonacci(n)` + pytest | coding | tests pass | pytest_runner | - | - | <4 min | $0 | 100% tests |
+| 3 | Multi-file refactor | multi-file coding | test suite green | pytest across files | - | review | <8 min | ≤$0.10 (fallback) | tests pass |
 | 4 | Cited 300-word brief | citation research | every URL resolves + supports claim | URL fetch + match | claim-support judge | spot | <6 min | ≤$0.05 | 100% citations valid |
-| 5 | Retrieval over run history | RAG | correct prior-run facts | exact-match on stored fields | — | — | <2 min | $0 | ≥90% recall |
-| 6 | Long-context summary | long context | key-point coverage | keyword coverage | coverage judge | — | <5 min | ≤$0.10 (Gemini) | ≥85% coverage |
-| 7 | Cost-vs-quality A/B | tradeoff | quality delta / $ | cost_tracker | cross-family judge | — | n/a | budget-bound | delta/$ ≥ threshold |
-| 8 | Privacy red-team | security | planted secrets blocked | gitleaks/detect-secrets | — | — | n/a | $0 | 0 leaks |
-| 9 | Fallback-trigger test | routing | correct trigger fires | assertion on log | — | — | n/a | mocked | exact trigger |
-| 10 | Constraint stress | strict format | format spec met | format validator | — | — | <4 min | $0 | 100% format |
+| 5 | Retrieval over run history | RAG | correct prior-run facts | exact-match on stored fields | - | - | <2 min | $0 | ≥90% recall |
+| 6 | Long-context summary | long context | key-point coverage | keyword coverage | coverage judge | - | <5 min | ≤$0.10 (Gemini) | ≥85% coverage |
+| 7 | Cost-vs-quality A/B | tradeoff | quality delta / $ | cost_tracker | cross-family judge | - | n/a | budget-bound | delta/$ ≥ threshold |
+| 8 | Privacy red-team | security | planted secrets blocked | gitleaks/detect-secrets | - | - | n/a | $0 | 0 leaks |
+| 9 | Fallback-trigger test | routing | correct trigger fires | assertion on log | - | - | n/a | mocked | exact trigger |
+| 10 | Constraint stress | strict format | format spec met | format validator | - | - | <4 min | $0 | 100% format |
 
 ## 18. Recommended roadmap
 
-**Phase 1 (implement first — biggest quality/$, lowest risk):** deterministic validators (word-count, format, citation-URL) wired into the loop; cost/privacy scaffolding (`privacy_guard.py`, `cost_tracker.py`); **cross-family cloud Judge** behind `cloud.enabled` + preview + budget. This directly fixes the 120-word-constraint failure and improves the score signal that drives everything.
+**Phase 1 (implement first - biggest quality/$, lowest risk):** deterministic validators (word-count, format, citation-URL) wired into the loop; cost/privacy scaffolding (`privacy_guard.py`, `cost_tracker.py`); **cross-family cloud Judge** behind `cloud.enabled` + preview + budget. This directly fixes the 120-word-constraint failure and improves the score signal that drives everything.
 **Phase 2:** **cloud Synthesizer** final-polish option; full policy matrix + `router.py`/`cloud_policy.py`; Streamlit cost meter, preview/approve dialog, fallback-events view; SQLite `cloud_calls` table.
 **Phase 3:** retrieval/memory (RAG over runs + reflection replay); **cloud Builder/Fixer** for repeatedly failing hard code; long-context routing to Gemini 3.1 Pro; the full benchmark suite in CI.
 **Benchmarks that change the plan:** if the local cross-family Judge reaches ≥0.8 agreement with human ratings, deprioritize cloud Judge; if fallback quality-delta/$ falls below threshold on the A/B eval, keep those steps local; if local coding pass@1 on single-file tasks exceeds ~90%, don't spend cloud budget there.
@@ -285,11 +285,11 @@ Reasoning: deterministic validators flip strict-format tasks *above* a Sonnet si
 
 ## 20. Final recommendation
 
-Ship **local-first with cloud disabled by default**, then add fallback as a gated, per-role escalation whose default beneficiaries are the **Judge** (cross-family, bias-reducing) and **Synthesizer** (final polish), using **Claude Sonnet 5** as the default provider, with **deterministic validators doing the constraint work that a bigger model would otherwise be needed for**. Do not buy hardware — the bottlenecks are architectural. Do not go cloud-only — it defeats the project's privacy premise and the evidence shows local-first is sufficient for the verifiable task classes. Implement validators + cross-family cloud Judge first, cloud Synthesizer + cost/privacy guards second, retrieval/memory + cloud Builder/Fixer third. Position the project honestly as a **privacy-first, verifier-guided, local-first agent workflow with optional frontier fallback** — impressive precisely because it is true.
+Ship **local-first with cloud disabled by default**, then add fallback as a gated, per-role escalation whose default beneficiaries are the **Judge** (cross-family, bias-reducing) and **Synthesizer** (final polish), using **Claude Sonnet 5** as the default provider, with **deterministic validators doing the constraint work that a bigger model would otherwise be needed for**. Do not buy hardware - the bottlenecks are architectural. Do not go cloud-only - it defeats the project's privacy premise and the evidence shows local-first is sufficient for the verifiable task classes. Implement validators + cross-family cloud Judge first, cloud Synthesizer + cost/privacy guards second, retrieval/memory + cloud Builder/Fixer third. Position the project honestly as a **privacy-first, verifier-guided, local-first agent workflow with optional frontier fallback** - impressive precisely because it is true.
 
 **Portfolio positioning assets:**
 - *One-line:* "A privacy-first, local-first multi-agent AI quality pipeline with deterministic verification and optional frontier-model fallback."
-- *GitHub About:* "Local-first multi-agent AI orchestrator on Ollama — critique/revise/judge loop with deterministic code + citation verification, run history, and opt-in cloud fallback."
+- *GitHub About:* "Local-first multi-agent AI orchestrator on Ollama - critique/revise/judge loop with deterministic code + citation verification, run history, and opt-in cloud fallback."
 - *Portfolio summary:* "Built a local-first agent workflow that improves LLM output through scored critique loops and deterministic validators, reaching practical parity with frontier single-shot output on constraint-checked and test-verified tasks, with an opt-in, cost- and privacy-governed cloud fallback."
 - *Resume bullet:* "Designed and built a local-first multi-agent AI pipeline (Python, Ollama, SQLite, Streamlit) with deterministic code/pytest verification, LLM-as-judge scoring loops, and an opt-in cloud-fallback layer with secret-scanning, token-based budgets, and audit logging."
 - *Case-study title:* "Workflow Quality Over Model Quality: Reaching Frontier-Grade Output on a 24 GB MacBook."
@@ -300,5 +300,5 @@ Ship **local-first with cloud disabled by default**, then add fallback as a gate
 ### Key assumptions stated
 1. **Sonnet 5 is real and current** (Anthropic, June 30, 2026; `claude-sonnet-5`; 1M context; $2/$10 intro → $3/$15). Where direct public benchmarks are thin, fair proxies (Sonnet 4.6, published Sonnet 5 SWE-bench-Pro figures, partner statements, and deterministic checks on our own side) are used and labeled.
 2. **"Reach Sonnet 5-level quality" means workflow/agent-system/product parity on verifiable task classes**, not turning a local model into Sonnet 5.
-3. **"Claude Code-inspired" = public/legal patterns only** (dual-LLM quarantine, effort/cost controls, verifier loops) — no proprietary internals copied.
+3. **"Claude Code-inspired" = public/legal patterns only** (dual-LLM quarantine, effort/cost controls, verifier loops) - no proprietary internals copied.
 4. **Repo internals not directly readable** (`adapters.py`, `models.yaml`, `database.py`) are treated as unverified and flagged; all pipeline/config/logging/SQLite claims that *are* asserted were verified by reading `run.py` and `README.md` directly.

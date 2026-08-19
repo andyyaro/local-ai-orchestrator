@@ -1,10 +1,10 @@
-# 07 — Phase 2: Deterministic Validators
+# 07 - Phase 2: Deterministic Validators
 
 ## Goal
 
 Fix the 120-word constraint failure permanently by adding deterministic,
 code-level constraint checks that run before (and override) the Judge's
-score — the same way `orchestrator/code_runner.py` already overrides the
+score - the same way `orchestrator/code_runner.py` already overrides the
 Judge for broken code.
 
 ## Why it matters
@@ -12,7 +12,7 @@ Judge for broken code.
 The smoke test that ignored a 120-word limit did so because nothing in the
 codebase checks word count. The Judge is an LLM (`agents/judge.py`, scored
 against the rubric in `prompts/judge.txt`), and LLM judges are well-documented
-to be unreliable at exactly this kind of precise, countable constraint —
+to be unreliable at exactly this kind of precise, countable constraint -
 counting words is a deterministic operation, not a judgment call, and
 deterministic operations belong in Python, not in a model's context window.
 
@@ -26,7 +26,7 @@ This repo already has exactly this pattern working for code correctness:
 and `run.py`'s `_apply_code_verification_to_verdict()` forces the Judge's
 verdict to fail (`pass = False`, `total_score = 0`, hard fail `broken_code`)
 regardless of what score the Judge gave. Phase 2 adds the same mechanism for
-constraint violations instead of code failures — a new `constraint_violation`
+constraint violations instead of code failures - a new `constraint_violation`
 hard fail that the Judge cannot override with a high score.
 
 ## Files likely touched
@@ -52,7 +52,7 @@ tests/test_code_runner.py
 ```
 
 Recall from `00-overview.md` that `run.py` and `orchestrator/graph.py` are two
-parallel pipeline implementations — this phase must wire validator
+parallel pipeline implementations - this phase must wire validator
 enforcement into both, or explicitly document why one was skipped.
 
 ## Exact implementation instructions
@@ -66,19 +66,19 @@ git checkout -b phase-2-validators
 ```
 
 2. Create `orchestrator/validators.py`. This module has no dependency on any
-   agent, model, or network call — it operates purely on the goal string and
+   agent, model, or network call - it operates purely on the goal string and
    the draft string. Design it around these functions:
 
    - `extract_word_limit(goal: str) -> tuple[int | None, str | None]`
      Parses the raw goal text for a word-count constraint and returns
      `(limit, mode)` where `mode` is one of `"exact"`, `"max"`, or `"min"`,
      or `(None, None)` if no constraint is found. This must be a plain regex
-     search — no model call. Cover phrasings like "120 words", "in exactly
+     search - no model call. Cover phrasings like "120 words", "in exactly
      120 words", "no more than 500 words", "at least 50 words", "300-word".
 
    - `count_words(text: str) -> int`
      Splits on whitespace and counts tokens. Keep this simple and
-     predictable — don't try to be clever about hyphenated words or
+     predictable - don't try to be clever about hyphenated words or
      contractions; document the one rule you pick (e.g. "split on
      whitespace") so it's auditable.
 
@@ -86,7 +86,7 @@ git checkout -b phase-2-validators
      Compares `count_words(draft)` against `limit` according to `mode`.
      Consider a small tolerance (for example, ±5%) for `"exact"` mode so a
      121-word draft against a 120-word goal isn't punished as harshly as a
-     300-word draft — but document the tolerance value and why you picked
+     300-word draft - but document the tolerance value and why you picked
      it, since "close enough" is a judgment call you're making once, in
      code, rather than leaving to chance every run.
 
@@ -111,8 +111,8 @@ git checkout -b phase-2-validators
      For coding-mode tasks, confirms at least one fenced code block exists
      (or, for tasks that should *not* contain code, that none does).
 
-   - A shared `ValidationResult` shape — either a small dataclass or a plain
-     dict — with at minimum: `rule` (str, e.g. `"word_limit"`), `passed`
+   - A shared `ValidationResult` shape - either a small dataclass or a plain
+     dict - with at minimum: `rule` (str, e.g. `"word_limit"`), `passed`
      (bool), `detail` (str, human-readable explanation for logs and the
      rationale field).
 
@@ -121,7 +121,7 @@ git checkout -b phase-2-validators
      decides which checks are relevant (word limit is always checked if
      `extract_word_limit` finds one; code-block presence only applies in
      `mode == "coding"`; and so on) and returns the full list of results,
-     not just the failures — so passing checks can be logged too if useful
+     not just the failures - so passing checks can be logged too if useful
      later.
 
 3. Wire validator enforcement into `run.py`, in the same place and the same
@@ -161,12 +161,12 @@ def _apply_validator_results_to_verdict(verdict: dict, validator_results: list) 
    (for example `loop{iteration:02d}_validators.json`), so they're visible in
    `runs/<timestamp>/` alongside the other loop artifacts.
 
-4. Mirror the same wiring in `orchestrator/graph.py`'s `node_judge()` —
+4. Mirror the same wiring in `orchestrator/graph.py`'s `node_judge()` -
    this pipeline currently has no code-verification-style override at all
    (only `run.py` has it), so adding validators here is a good moment to
    also confirm whether the LangGraph path already needs the same
    code-verification parity fix as a separate, explicitly-scoped follow-up
-   (do not silently fix that as part of this phase — note it and ask).
+   (do not silently fix that as part of this phase - note it and ask).
 
 5. Do not modify `prompts/judge.txt`'s rubric to try to make the Judge
    "better at counting." The point of this phase is that the Judge is no
@@ -218,13 +218,12 @@ pytest tests/ -v
 ## If it fails
 
 - A real, well-formed 120-word draft is being flagged as failing: check your
-  tolerance value in `check_word_limit` — a tolerance of 0 is too strict for
+  tolerance value in `check_word_limit` - a tolerance of 0 is too strict for
   natural language generation; re-read the tolerance rule you documented in
   step 2 and adjust it deliberately, don't just widen it until the test
   passes without understanding why.
 - `extract_word_limit` misses a real phrasing from an actual goal you tried:
-  add that phrasing as a new regression test case first, then fix the regex
-  — don't fix the regex by guessing without a failing test pinning down the
+  add that phrasing as a new regression test case first, then fix the regex don't fix the regex by guessing without a failing test pinning down the
   exact input.
 - The full `tests/` suite breaks after wiring the new hard-fail logic into
   `run.py`: check whether `_should_break_on_hard_fail()` (which already has
@@ -250,7 +249,7 @@ git branch -D phase-2-validators
 ```
 
 ⚠️ Do not disable validator enforcement by weakening `_apply_validator_results_to_verdict`'s
-threshold in place without a corresponding test — if it's not working the
+threshold in place without a corresponding test - if it's not working the
 way you want, that's a signal to fix the specific validator rule, not to make
 enforcement quietly optional.
 
@@ -303,7 +302,7 @@ Implement the following:
    directory the same way code verification results are saved.
 3. Apply the same wiring to orchestrator/graph.py's node_judge(). If that
    pipeline is missing the equivalent code-verification override entirely,
-   do not silently add it as part of this phase — stop and report it as a
+   do not silently add it as part of this phase - stop and report it as a
    separate, out-of-scope finding instead.
 4. Do not modify prompts/judge.txt's rubric.
 

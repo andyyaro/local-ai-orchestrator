@@ -11,12 +11,12 @@
 Single-call AI responses are inconsistent. You send one prompt, get one answer,
 and have no way to know whether it is the best possible output or a mediocre first
 draft. Large AI companies solve this with internal feedback loops and verification
-systems — but those systems are usually invisible to users and often depend on
+systems - but those systems are usually invisible to users and often depend on
 paid API calls.
 
 This project brings that quality loop to a local machine: one goal in, multiple
 agent passes, critique, revision, scored judgment, optional code verification,
-and a polished final output — all running locally through Ollama.
+and a polished final output - all running locally through Ollama.
 
 ---
 
@@ -474,18 +474,18 @@ pressure stays green.
 ## Release Gates
 
 Four distinct checks, from fastest/always-required to slowest/optional.
-Each one tests something different — running a slower check does not make
+Each one tests something different - running a slower check does not make
 a faster one redundant, and passing a faster one does not substitute for
 a slower one where it applies.
 
-**Unit/CI gate** — required on every PR, runs in GitHub Actions:
+**Unit/CI gate** - required on every PR, runs in GitHub Actions:
 
 ```bash
 python -m ruff check .
 python -m pytest tests/ -v
 ```
 
-**Quick release check** — required before tagging a release. Adds a
+**Quick release check** - required before tagging a release. Adds a
 lightweight end-to-end smoke test with a small local model:
 
 ```bash
@@ -497,13 +497,13 @@ bash scripts/local_acceptance.sh
 `scripts/local_acceptance.sh` verifies Ollama is running and the pipeline
 completes end-to-end (or fails safely) with a small model
 (`llama3.2:3b`). It intentionally does **not** require a small model to
-satisfy a strict output-quality constraint like an exact word count — a
+satisfy a strict output-quality constraint like an exact word count - a
 small model correctly detecting and reporting its own constraint
 violation is a pass here, not a failure. It does still guard against the
 Phase 6b regression where the pipeline silently reported success despite
 a violated constraint.
 
-**Full release-candidate check** — slow (many real model calls,
+**Full release-candidate check** - slow (many real model calls,
 10–20+ minutes observed); run after major pipeline/model behavior
 changes, not before every tag:
 
@@ -511,7 +511,7 @@ changes, not before every tag:
 python -m eval.run_eval_suite
 ```
 
-**Strict local quality check** — optional/recommended for this immediate
+**Strict local quality check** - optional/recommended for this immediate
 v2.0 tag, since it is slower and model-dependent:
 
 ```bash
@@ -521,7 +521,7 @@ bash scripts/strict_acceptance.sh
 `scripts/strict_acceptance.sh` uses a stronger local model
 (`llama3.1:8b`) and requires the final output to genuinely satisfy a
 precise constraint (an exact word count), failing loudly if it doesn't.
-It never downloads models automatically — if `llama3.1:8b` isn't pulled
+It never downloads models automatically - if `llama3.1:8b` isn't pulled
 locally, it reports the exact `ollama pull` command and skips.
 
 ---

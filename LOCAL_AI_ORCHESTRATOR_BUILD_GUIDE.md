@@ -1,10 +1,10 @@
-# Local AI Orchestrator — Complete Build Guide
+# Local AI Orchestrator - Complete Build Guide
 
 **MacBook Pro M3 · 24GB RAM · macOS Tahoe · Ollama · Python · LangGraph · Streamlit**
 
 > This guide takes you from a fresh working directory to a fully operational local-first
 > multi-agent AI orchestration system. It is written for someone who is comfortable with
-> Terminal but wants every step spelled out explicitly — no assumed knowledge, no skipped
+> Terminal but wants every step spelled out explicitly - no assumed knowledge, no skipped
 > commands, no hand-waving.
 
 ---
@@ -15,13 +15,13 @@
 - Each section ends with a verification step. Do not skip them.
 - Commands that could overwrite or delete data are marked with a ⚠️ warning.
 - All file paths are absolute from your Mac's home directory (`~` = `/Users/andyyaro`).
-- Command blocks are copy-paste friendly — commands do not include a `$` prompt prefix.
+- Command blocks are copy-paste friendly - commands do not include a `$` prompt prefix.
   Lines beginning with `#` inside command blocks are comments explaining the command,
   not part of the command itself.
 
 ---
 
-# SECTION 1 — Project Overview
+# SECTION 1 - Project Overview
 
 ## What you are building
 
@@ -96,7 +96,7 @@ essay, writes the code, writes the explanation, etc. This is the first real draf
 ### Critic
 Reviews the Builder's draft against the original goal. Identifies specific weaknesses:
 logic gaps, missing sections, factual errors, code bugs, poor structure, vague
-language. The Critic does not rewrite — it only reports what is wrong and why.
+language. The Critic does not rewrite - it only reports what is wrong and why.
 
 **Input:** The original goal + the Builder's draft.
 **Output:** A structured critique with specific, actionable feedback.
@@ -105,7 +105,7 @@ language. The Critic does not rewrite — it only reports what is wrong and why.
 
 ### Fixer
 Takes the Builder's draft and the Critic's feedback and produces an improved version.
-The Fixer is not starting from scratch — it is revising. It must address every point the
+The Fixer is not starting from scratch - it is revising. It must address every point the
 Critic raised.
 
 **Input:** Builder's draft + Critic's feedback.
@@ -144,7 +144,7 @@ magnitude slower than RAM), and the system would become unusably slow or crash.
 Running sequentially means: one model loads, generates its response, and then Ollama
 may keep it in RAM briefly before the next call. In practice, Ollama keeps recently
 used models in memory for a configurable time (controlled by `OLLAMA_KEEP_ALIVE`).
-The recommended default for this project is `5m` — models stay warm between
+The recommended default for this project is `5m` - models stay warm between
 sequential agent calls within the same run, then unload after 5 minutes of inactivity.
 Use `OLLAMA_KEEP_ALIVE=0` only as a troubleshooting step when memory pressure is high.
 
@@ -190,7 +190,7 @@ browser at `http://localhost:8501`. From that interface you can:
 - Browse a history panel showing all past runs stored in SQLite.
 - Re-open any past run to see its intermediate steps.
 
-The Streamlit interface is entirely local — it runs on your Mac, connects to localhost,
+The Streamlit interface is entirely local - it runs on your Mac, connects to localhost,
 and stores everything on disk. Nothing is sent to external servers.
 
 ---
@@ -231,7 +231,7 @@ You have a complete system when:
 
 ---
 
-# SECTION 2 — Hardware Reality Check
+# SECTION 2 - Hardware Reality Check
 
 ## Your MacBook Pro M3 with 24GB unified memory
 
@@ -272,16 +272,16 @@ models):
 to verify the full pipeline works end-to-end, then switch to the Serious Work profile
 for output you would actually use. The Serious Work profile uses multiple 12B–14B models
 on disk (~35–40 GB total), but because agents run sequentially, only one model is loaded
-at a time — peak loaded RAM is approximately 8–9 GB per model, not all models at once. Section 6 defines the four
+at a time - peak loaded RAM is approximately 8–9 GB per model, not all models at once. Section 6 defines the four
 profiles in detail. The key insight: 14B models fit comfortably on your 24GB system
 and produce meaningfully better output than 7B models on complex writing and reasoning
-tasks — they are not reserved for "someday"; they are the real target.
+tasks - they are not reserved for "someday"; they are the real target.
 
 ---
 
 ## What model sizes are NOT realistic
 
-- **70B+ models:** These require 38–42GB at Q4 — nearly double your total RAM. Do not
+- **70B+ models:** These require 38–42GB at Q4 - nearly double your total RAM. Do not
   attempt them. Ollama will try to load them and your Mac will become unresponsive as it
   swaps to disk, potentially for minutes or until you force-quit.
 
@@ -305,7 +305,7 @@ lives when it is actively running. When you call a model:
 3. After inference, Ollama may keep the model in RAM briefly (controlled by
    `OLLAMA_KEEP_ALIVE`).
 
-Your 1TB SSD is more than enough — a large collection of models (say, 10 different
+Your 1TB SSD is more than enough - a large collection of models (say, 10 different
 7B–13B models) might use 50–80GB of disk space. That is 8% of your total storage.
 
 RAM is the real constraint. If the model does not fit in RAM, it cannot run properly.
@@ -326,7 +326,7 @@ its answer, with structured guidance at each step. This compensates effectively 
 what smaller models lack in one-shot quality.
 
 This project's Serious Work profile puts 14B models on Builder, Critic, Judge, and
-Synthesizer — the roles where quality is the bottleneck. The 8B model handles
+Synthesizer - the roles where quality is the bottleneck. The 8B model handles
 Supervisor and Planner (routing decisions, not creative work). See Section 6 for the
 exact assignment and the reasoning behind which model family goes to which role.
 
@@ -342,7 +342,7 @@ If you run two 7B model calls at the same time:
 - Memory pressure increases, potentially causing macOS to compress memory pages.
 
 This project runs agents **sequentially on purpose.** There is no performance benefit
-to parallelism here because each agent's output is the next agent's input — they are
+to parallelism here because each agent's output is the next agent's input - they are
 inherently dependent. Running them sequentially is not a limitation; it is the
 correct architecture for this pipeline.
 
@@ -350,17 +350,17 @@ correct architecture for this pipeline.
 
 ## What performance expectations you should have
 
-**Bootstrap profile (3B — `llama3.2:3b`):**
+**Bootstrap profile (3B - `llama3.2:3b`):**
 - Each agent call: 3–10 seconds.
 - Full pipeline: 1–2 minutes per loop.
 - Use for verifying the pipeline works, not for final output.
 
-**Fast profile (8B — `llama3.1:8b`):**
+**Fast profile (8B - `llama3.1:8b`):**
 - First call after model load: 10–20 seconds (loading from disk + inference).
 - Subsequent calls to the same model: 5–15 seconds (model cached in RAM).
 - Each loop iteration (Builder → Critic → Fixer → Judge): ~60–120 seconds total.
 
-**Serious Work / Coding profiles (14B — `qwen2.5:14b`, `phi4:14b`):**
+**Serious Work / Coding profiles (14B - `qwen2.5:14b`, `phi4:14b`):**
 - First call: 20–50 seconds.
 - Each agent call: 20–50 seconds (different 14B models reload between roles).
 - Full loop iteration with 3 × 14B agents: ~3–6 minutes.
@@ -389,7 +389,7 @@ Use `OLLAMA_KEEP_ALIVE=0` only as a troubleshooting step when memory pressure is
 or you see multiple models accumulating in RAM:
 
 ```bash
-# Troubleshooting only — forces immediate unload after each call
+# Troubleshooting only - forces immediate unload after each call
 export OLLAMA_KEEP_ALIVE=0
 ```
 
@@ -402,7 +402,7 @@ Before a long pipeline run, close:
 - Any other AI tools or large apps.
 - Xcode if you have it open and are not using it.
 
-You do not need to close VS Code — it uses ~300–500MB, which is fine.
+You do not need to close VS Code - it uses ~300–500MB, which is fine.
 
 ---
 
@@ -417,7 +417,7 @@ You do not need to close VS Code — it uses ~300–500MB, which is fine.
    - **Green:** Normal. Fine to run models.
    - **Yellow:** Moderate pressure. Consider closing some apps.
    - **Red:** High pressure. Do not run large models. Close apps first.
-5. Also check "Swap Used" — if swap is above 1–2GB, your Mac is using disk as
+5. Also check "Swap Used" - if swap is above 1–2GB, your Mac is using disk as
    overflow memory, which will make model responses very slow.
 
 ### Method 2: Terminal command
@@ -477,11 +477,11 @@ this in the Ollama API call with `"num_ctx": 2048` to reduce memory usage.
 
 ---
 
-# SECTION 3 — Verify Existing Tools
+# SECTION 3 - Verify Existing Tools
 
 Before installing anything new, confirm exactly what you already have and whether it
 is working. Run each command below in Terminal (`Command + Space`, type `Terminal`,
-press Enter). Do not skip a check just because you think something is installed —
+press Enter). Do not skip a check just because you think something is installed -
 version mismatches and broken PATH entries are the most common source of early
 problems.
 
@@ -535,7 +535,7 @@ Python 3.14.0
 which python3
 ```
 
-**Expected output** (example — path may vary by install method):
+**Expected output** (example - path may vary by install method):
 ```
 /usr/local/bin/python3
 ```
@@ -667,7 +667,7 @@ Warning: client version is 0.12.9
 ollama version is 0.12.9
 ```
 
-The version number is fine either way — the "could not connect" warning just means
+The version number is fine either way - the "could not connect" warning just means
 the Ollama server daemon is not running yet. The CLI itself is installed correctly.
 Section 4 covers how to start the server.
 
@@ -681,7 +681,7 @@ If it exists, add `/usr/local/bin` to your PATH:
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
-If it does not exist, reinstall Ollama from https://ollama.com/download — download
+If it does not exist, reinstall Ollama from https://ollama.com/download - download
 the macOS `.dmg`, open it, drag Ollama to Applications, and launch it once to
 complete setup.
 
@@ -743,17 +743,17 @@ echo "=== Ollama Server ===" && curl -s http://localhost:11434 || echo "Server n
 **What this does:** Runs all seven checks in one shot and labels each output.
 
 If every line above returns a version number or "Ollama is running", you are ready
-to proceed. The only expected failure at this stage is the Ollama server check —
+to proceed. The only expected failure at this stage is the Ollama server check -
 fix that in the next section.
 
 ---
 
-# SECTION 4 — Fix or Complete Ollama Setup
+# SECTION 4 - Fix or Complete Ollama Setup
 
 You have the Ollama CLI installed (version 0.12.9) but the server is not running.
 The server is a separate process that needs to be started before any model can be
 called. Think of the CLI as a remote control and the server as the device it
-controls — the remote exists, but you need to turn on the device.
+controls - the remote exists, but you need to turn on the device.
 
 ---
 
@@ -778,7 +778,7 @@ time.
 
 ## 4.2 How to start the Ollama app on macOS
 
-**Option A — From Finder:**
+**Option A - From Finder:**
 1. Open Finder (`Command + N` or click the Finder icon in your Dock).
 2. Click **Applications** in the left sidebar.
 3. Find **Ollama** in the list and double-click it.
@@ -786,12 +786,12 @@ time.
    near the clock).
 5. That icon means the Ollama server is running.
 
-**Option B — From Spotlight:**
+**Option B - From Spotlight:**
 1. Press `Command + Space`.
 2. Type `Ollama`.
 3. Press Enter.
 
-**Option C — From Terminal (launch the app from command line):**
+**Option C - From Terminal (launch the app from command line):**
 ```bash
 open -a Ollama
 ```
@@ -836,7 +836,7 @@ ollama serve
 lines as models are loaded and requests come in. It will keep running until you
 press `Control + C` to stop it.
 
-**Important:** Do not run `ollama serve` if the Ollama app is already running —
+**Important:** Do not run `ollama serve` if the Ollama app is already running -
 that would try to start a second server on port 11434 and fail with a "bind: address
 already in use" error. See Section 4.8 for how to handle that.
 
@@ -849,11 +849,11 @@ running your Python scripts.
 
 When you first launch Ollama:
 
-- **"Ollama wants to accept incoming network connections"** — Click **Allow**. Ollama
+- **"Ollama wants to accept incoming network connections"** - Click **Allow**. Ollama
   needs this to serve requests on localhost.
-- **"Allow Ollama to access the network?"** (may appear as a firewall dialog) — Click
+- **"Allow Ollama to access the network?"** (may appear as a firewall dialog) - Click
   **Allow**.
-- Gatekeeper may ask you to confirm opening an app from the internet the first time —
+- Gatekeeper may ask you to confirm opening an app from the internet the first time -
   click **Open**.
 
 These prompts only appear once. After you allow them, Ollama will start without
@@ -872,7 +872,7 @@ Or from Terminal:
 pkill -f "ollama"
 ```
 **What this does:** Sends a termination signal to any process whose name contains
-"ollama". Use with care — it will stop both the app and any `ollama serve` process.
+"ollama". Use with care - it will stop both the app and any `ollama serve` process.
 
 **If you started with `ollama serve`:** Press `Control + C` in the Terminal window
 where it is running.
@@ -906,7 +906,7 @@ curl http://localhost:11434
 Error: listen tcp 127.0.0.1:11434: bind: address already in use
 ```
 
-**Cause:** Something is already listening on port 11434 — either another Ollama
+**Cause:** Something is already listening on port 11434 - either another Ollama
 instance or a different process.
 
 **Find what is using the port:**
@@ -923,7 +923,7 @@ ollama   12345  andyyaro  ...
 ```
 
 If the process is `ollama`, you already have an Ollama server running. Do not start
-another one — just use the existing one. Verify with:
+another one - just use the existing one. Verify with:
 ```bash
 curl http://localhost:11434
 ```
@@ -1046,24 +1046,24 @@ open a new one.
 
 ---
 
-# SECTION 5 — Python Environment Setup
+# SECTION 5 - Python Environment Setup
 
 ## 5.1 Should Python 3.14 work for this project?
 
 Python 3.14.0 was released in late 2024 and is a relatively new version. The
-packages this project uses — `langgraph`, `langchain-ollama`, `streamlit`,
-`requests`, `pyyaml` — are all actively maintained and should support Python 3.14.
+packages this project uses - `langgraph`, `langchain-ollama`, `streamlit`,
+`requests`, `pyyaml` - are all actively maintained and should support Python 3.14.
 
 However, Python 3.14 occasionally has compatibility issues with packages that use
 compiled C extensions (like some versions of `numpy`, `pydantic`, or `grpcio`) if
 those packages have not yet published binary wheels for 3.14. When you try to
 install a package without a pre-built wheel, pip will attempt to compile it from
-source — which can fail if the right build tools are not present.
+source - which can fail if the right build tools are not present.
 
 **The safe approach:**
 1. Try creating a virtual environment with Python 3.14 and installing all packages.
 2. If any package fails to install, switch to Python 3.12 (stable, universally
-   supported) installed via Homebrew — see Section 5.8.
+   supported) installed via Homebrew - see Section 5.8.
 
 Do not change your system Python installation. Always use virtual environments.
 
@@ -1186,7 +1186,7 @@ code requirements.txt
 ```
 
 Add the following content (this is the full list for the complete project, not just
-the MVP — you will add packages as you build each phase):
+the MVP - you will add packages as you build each phase):
 
 ```
 # Core HTTP and config
@@ -1202,7 +1202,7 @@ langchain-core>=0.2.0
 streamlit>=1.35.0
 
 # Database (Phase 7)
-# sqlite3 is built into Python — no install needed
+# sqlite3 is built into Python - no install needed
 
 # Development tools
 pytest>=8.0.0
@@ -1229,7 +1229,7 @@ After successfully installing packages, save a snapshot of exact versions:
 pip freeze > requirements-lock.txt
 ```
 **What this does:** Writes every installed package and its exact version to
-`requirements-lock.txt`. This is used for reproducibility — someone else installing
+`requirements-lock.txt`. This is used for reproducibility - someone else installing
 from `requirements-lock.txt` will get the exact same package versions you have.
 
 **Do not commit `requirements-lock.txt` as your primary requirements file.** Keep
@@ -1307,7 +1307,7 @@ for it.
 
 ## 5.10 How to make VS Code use the correct virtual environment
 
-VS Code needs to know which Python interpreter to use for this project — otherwise
+VS Code needs to know which Python interpreter to use for this project - otherwise
 it will underline imports with red squiggles and not find packages when you run
 scripts from inside VS Code.
 
@@ -1401,14 +1401,14 @@ Terminal window, not a subshell.
 
 ---
 
-# SECTION 6 — Model Download and Quality Profiles
+# SECTION 6 - Model Download and Quality Profiles
 
 ## 6.0 The core quality principle
 
 Serious local output quality comes from two things working together:
 
-1. **Better model choices** — using capable models at realistic sizes for your hardware.
-2. **A stronger review loop** — the critique-fix-judge cycle that makes any model
+1. **Better model choices** - using capable models at realistic sizes for your hardware.
+2. **A stronger review loop** - the critique-fix-judge cycle that makes any model
    produce better results than a single call.
 
 Neither alone is enough. A great model with no loop produces one draft. A great loop
@@ -1416,7 +1416,7 @@ with weak models produces well-iterated mediocrity. You need both.
 
 This section defines **four model profiles** for your M3 24GB MacBook. Each profile
 is a named configuration in `config/models.yaml`. You switch between them with one
-config change — no Python edits needed.
+config change - no Python edits needed.
 
 | Profile | Purpose | When to use |
 |---------|---------|-------------|
@@ -1467,10 +1467,10 @@ The tag in the first column of the output is what you should pass to `ollama pul
 
 ---
 
-## 6.2 Bootstrap Profile — Pull This First
+## 6.2 Bootstrap Profile - Pull This First
 
 **Purpose:** Prove the pipeline works. Debug the orchestration loop. Tune prompt
-templates. This is not where you do serious work — it is where you verify the
+templates. This is not where you do serious work - it is where you verify the
 code is wired together correctly.
 
 Pull one model only:
@@ -1482,7 +1482,7 @@ ollama pull llama3.2:3b
 |----------|-------|
 | Download size | ~2.0 GB |
 | RAM when loaded | ~2.0–2.5 GB |
-| Speed on M3 | Very fast — 3–10 seconds per response |
+| Speed on M3 | Very fast - 3–10 seconds per response |
 | All pipeline roles | Supervisor, Planner, Builder, Critic, Fixer, Judge, Synthesizer |
 | Limitation | Output quality reflects a 3B model: adequate for testing, not for real work |
 | Fallback if too slow | `llama3.2:1b` (~1 GB, ~1–3 s, lower quality) |
@@ -1514,12 +1514,12 @@ python run.py --goal "Explain recursion." \
 ```
 
 **When to leave Bootstrap behind:** Once `run.py` completes without errors, all
-7 agent files are saved in `runs/<timestamp>/`, and the Judge returns valid JSON —
+7 agent files are saved in `runs/<timestamp>/`, and the Judge returns valid JSON -
 you are done with Bootstrap. Switch to the Serious Work profile next.
 
 ---
 
-## 6.3 Serious Work Profile — Pull This for Real Outputs
+## 6.3 Serious Work Profile - Pull This for Real Outputs
 
 **Purpose:** The recommended default for writing, planning, study, and general tasks
 once the loop is verified. Uses models from different families for Builder vs. Judge
@@ -1527,7 +1527,7 @@ so the system is not judging its own output with the same model that produced it
 
 **Why different model families matter for Judge vs. Builder:**
 If the Builder and Judge are the same model (or the same model family), the Judge
-tends to find the output plausible for reasons of shared training patterns — it
+tends to find the output plausible for reasons of shared training patterns - it
 literally thinks in the same way. A Judge from a different family (different
 architecture, different training data mix, different developer) applies a genuinely
 independent critical perspective. This produces more useful scoring and harder-to-fool
@@ -1549,13 +1549,13 @@ ollama pull phi4:14b
 
 ---
 
-### Model A: `llama3.1:8b` — Fast router (Supervisor + Planner)
+### Model A: `llama3.1:8b` - Fast router (Supervisor + Planner)
 
 | Property | Value |
 |----------|-------|
 | Download size | ~4.7 GB |
 | RAM when loaded | ~4.9 GB |
-| Speed on M3 | Fast — 8–20 seconds per response |
+| Speed on M3 | Fast - 8–20 seconds per response |
 | Roles | Supervisor, Planner |
 | Why this role | Routing and planning tasks are structured and shorter. A fast, capable 8B model handles them well without spending 14B model time on them. |
 | Fallback | `llama3.2:3b` if speed is a priority |
@@ -1567,13 +1567,13 @@ Should respond in 10–25 seconds with a coherent, accurate answer.
 
 ---
 
-### Model B: `qwen2.5:14b` — Main builder (Builder + Fixer + Synthesizer)
+### Model B: `qwen2.5:14b` - Main builder (Builder + Fixer + Synthesizer)
 
 | Property | Value |
 |----------|-------|
 | Download size | ~8.9 GB |
 | RAM when loaded | ~8.5–9.0 GB |
-| Speed on M3 | Moderate — 20–50 seconds per response |
+| Speed on M3 | Moderate - 20–50 seconds per response |
 | Roles | Builder, Fixer, Synthesizer |
 | Why this role | Qwen 2.5 14B has strong instruction following, consistent output structure, and good performance across writing, planning, and explanation tasks. At 14B it noticeably outperforms 7–8B models on multi-section drafts. |
 | Fallback | `llama3.1:8b` if 14B is too slow for your task cadence |
@@ -1586,13 +1586,13 @@ and complete than a 3B or 7B model on the same prompt.
 
 ---
 
-### Model C: `gemma3:12b` — Critic (independent lineage)
+### Model C: `gemma3:12b` - Critic (independent lineage)
 
 | Property | Value |
 |----------|-------|
 | Download size | ~7.7 GB |
 | RAM when loaded | ~7.3–8.0 GB |
-| Speed on M3 | Moderate — 15–40 seconds per response |
+| Speed on M3 | Moderate - 15–40 seconds per response |
 | Roles | Critic |
 | Why this role | Google's Gemma 3 12B uses a different architecture and training approach from both Qwen and Phi. Using it specifically for critique means the Critic evaluates the Builder's output from a genuinely different perspective. |
 | Fallback | `llama3.1:8b` if you want to reduce the model count |
@@ -1604,15 +1604,15 @@ Should respond in 15–40 seconds with a specific, useful critique.
 
 ---
 
-### Model D: `phi4:14b` — Judge (strong reasoning, different family)
+### Model D: `phi4:14b` - Judge (strong reasoning, different family)
 
 | Property | Value |
 |----------|-------|
 | Download size | ~8.9 GB |
 | RAM when loaded | ~8.5–9.0 GB |
-| Speed on M3 | Moderate — 20–50 seconds per response |
+| Speed on M3 | Moderate - 20–50 seconds per response |
 | Roles | Judge |
-| Why this role | Microsoft's Phi-4 14B is known for structured reasoning and strict instruction following — both critical for JSON schema compliance. It is from a different model family than both Qwen (Builder) and Gemma (Critic), providing genuinely independent scoring. |
+| Why this role | Microsoft's Phi-4 14B is known for structured reasoning and strict instruction following - both critical for JSON schema compliance. It is from a different model family than both Qwen (Builder) and Gemma (Critic), providing genuinely independent scoring. |
 | Fallback | `gemma3:12b` doubles as Judge if you want to pull one fewer model |
 
 **Test JSON compliance (required for the Judge role):**
@@ -1651,7 +1651,7 @@ Or set it permanently in `config/models.yaml` (see Section 18).
 
 ---
 
-## 6.4 Coding Specialist Profile — Pull for Code Tasks
+## 6.4 Coding Specialist Profile - Pull for Code Tasks
 
 **Purpose:** When the primary task is writing Python code, a coding-specialized
 Builder/Fixer significantly outperforms a general-purpose model of similar size.
@@ -1667,7 +1667,7 @@ ollama pull qwen2.5-coder:14b
 |----------|-------|
 | Download size | ~8.9 GB |
 | RAM when loaded | ~8.5–9.0 GB |
-| Speed on M3 | Moderate — 20–50 seconds per response |
+| Speed on M3 | Moderate - 20–50 seconds per response |
 | Roles | Builder, Fixer in Coding and Debugging modes |
 | Why this role | Qwen 2.5 Coder 14B is trained specifically on code generation and is a better choice for Python tasks than the general Qwen 2.5 14B. Uses the same base architecture so the behavioral profile is familiar. |
 | Fallback | `qwen2.5-coder:7b` (~4.7 GB, ~5 GB RAM, faster but lower quality) |
@@ -1691,7 +1691,7 @@ Synthesizer   → qwen2.5:14b        (~8.5 GB RAM)
 
 **How to activate in config** (see Section 18 for full setup):
 ```yaml
-# config/models.yaml — coding profile active
+# config/models.yaml - coding profile active
 mode_overrides:
   coding:
     builder: "qwen2.5-coder:14b"
@@ -1707,7 +1707,7 @@ mode_overrides:
 
 ---
 
-## 6.5 Fast / Low-Memory Profile — For Testing and Tight RAM
+## 6.5 Fast / Low-Memory Profile - For Testing and Tight RAM
 
 **Purpose:** Quick prompt iteration, testing code changes, or running when other
 applications are consuming RAM. Explicitly lower quality than the Serious Work
@@ -1737,7 +1737,7 @@ python run.py --goal "Your goal here" \
 
 ---
 
-## 6.6 Future API Profile — Disabled by Default
+## 6.6 Future API Profile - Disabled by Default
 
 No models to pull. The architecture supports adding OpenAI or Anthropic as
 providers later via `config/models.yaml` without touching Python code.
@@ -1750,32 +1750,32 @@ This is covered in Section 18. Do not configure it now.
 Pull in this order. Stop after Step 1 for Day 1. Continue to Step 2 after
 the pipeline loop is verified end-to-end.
 
-**Step 1 — Bootstrap (Day 1, ~2 GB):**
+**Step 1 - Bootstrap (Day 1, ~2 GB):**
 ```bash
 ollama pull llama3.2:3b
 ```
 
-**Step 2 — Serious Work router (Day 3–4, ~4.7 GB more):**
+**Step 2 - Serious Work router (Day 3–4, ~4.7 GB more):**
 ```bash
 ollama pull llama3.1:8b
 ```
 
-**Step 3 — Serious Work builder (Day 4, ~8.9 GB more):**
+**Step 3 - Serious Work builder (Day 4, ~8.9 GB more):**
 ```bash
 ollama pull qwen2.5:14b
 ```
 
-**Step 4 — Serious Work critic (Day 4, ~7.7 GB more):**
+**Step 4 - Serious Work critic (Day 4, ~7.7 GB more):**
 ```bash
 ollama pull gemma3:12b
 ```
 
-**Step 5 — Serious Work judge (Day 4, ~8.9 GB more):**
+**Step 5 - Serious Work judge (Day 4, ~8.9 GB more):**
 ```bash
 ollama pull phi4:14b
 ```
 
-**Step 6 — Coding specialist, optional (Day 5+, ~8.9 GB more):**
+**Step 6 - Coding specialist, optional (Day 5+, ~8.9 GB more):**
 ```bash
 ollama pull qwen2.5-coder:14b
 ```
@@ -1787,7 +1787,7 @@ ollama pull qwen2.5-coder:14b
 Before committing to a profile for a specific type of work, run a direct comparison:
 
 ```bash
-# Test writing quality — same prompt, different models
+# Test writing quality - same prompt, different models
 ollama run llama3.2:3b "Write a 4-sentence explanation of neural networks for a software developer."
 ollama run llama3.1:8b "Write a 4-sentence explanation of neural networks for a software developer."
 ollama run qwen2.5:14b "Write a 4-sentence explanation of neural networks for a software developer."
@@ -1800,7 +1800,7 @@ Evaluate the output yourself on:
 - **Completeness:** Does it address the prompt fully?
 
 ```bash
-# Test JSON reliability — critical for the Judge role
+# Test JSON reliability - critical for the Judge role
 ollama run llama3.1:8b 'Return ONLY valid JSON: {"score": 74, "pass": true, "rationale": "Good."}'
 ollama run phi4:14b    'Return ONLY valid JSON: {"score": 74, "pass": true, "rationale": "Good."}'
 ```
@@ -1850,7 +1850,7 @@ gemma3:12b              f5b76b3c5b60    7.7 GB    1 day ago
 phi4:14b                4c52e786a9a1    8.9 GB    1 day ago
 qwen2.5-coder:14b       8a8d5fe4a6df    8.9 GB    10 hours ago
 ```
-(IDs and sizes are illustrative — your actual values will differ.)
+(IDs and sizes are illustrative - your actual values will differ.)
 
 ---
 
@@ -1894,7 +1894,7 @@ ollama list
 
 ---
 
-# SECTION 7 — Project Folder Setup
+# SECTION 7 - Project Folder Setup
 
 ## 7.1 The project root
 
@@ -1910,7 +1910,7 @@ cd ~/Downloads/multi-modal-workflow
 ```
 
 **Why `~/Downloads/`?** It is already there and it works fine for development.
-Later you can move the folder to `~/Projects/` or anywhere you prefer — just update
+Later you can move the folder to `~/Projects/` or anywhere you prefer - just update
 your VS Code workspace and Git remote URL accordingly. Nothing in the code uses
 absolute paths except what you configure in Section 18.
 
@@ -1994,7 +1994,7 @@ touch agents/__init__.py
 touch tests/__init__.py
 ```
 **What `touch` does:** Creates an empty file if it does not exist, or updates its
-modification timestamp if it does. The `__init__.py` files can be empty — their
+modification timestamp if it does. The `__init__.py` files can be empty - their
 presence is what matters.
 
 You do not need `__init__.py` in `config/`, `prompts/`, `runs/`, or `logs/` because
@@ -2030,14 +2030,14 @@ touch agents/synthesizer.py
 ```
 
 **What each file will contain:**
-- `base_agent.py` — shared logic: how to call Ollama, handle errors, retry.
-- `supervisor.py` — the Supervisor agent class.
-- `planner.py` — the Planner agent class.
-- `builder.py` — the Builder agent class.
-- `critic.py` — the Critic agent class.
-- `fixer.py` — the Fixer agent class.
-- `judge.py` — the Judge agent class (returns JSON scores).
-- `synthesizer.py` — the Final Synthesizer agent class.
+- `base_agent.py` - shared logic: how to call Ollama, handle errors, retry.
+- `supervisor.py` - the Supervisor agent class.
+- `planner.py` - the Planner agent class.
+- `builder.py` - the Builder agent class.
+- `critic.py` - the Critic agent class.
+- `fixer.py` - the Fixer agent class.
+- `judge.py` - the Judge agent class (returns JSON scores).
+- `synthesizer.py` - the Final Synthesizer agent class.
 
 You will fill these in during Phases 2–4 (Sections 9–11).
 
@@ -2051,8 +2051,8 @@ touch config/modes.yaml
 ```
 
 Leave these empty for now. You will fill them in Section 18. Their purpose:
-- `models.yaml` — maps each agent role to a specific model name.
-- `modes.yaml` — defines Writing, Coding, Planning, Debugging, and Study modes.
+- `models.yaml` - maps each agent role to a specific model name.
+- `modes.yaml` - defines Writing, Coding, Planning, Debugging, and Study modes.
 
 ---
 
@@ -2087,21 +2087,21 @@ code .gitignore
 
 Add this content exactly:
 ```
-# Virtual environment — never commit this
+# Virtual environment - never commit this
 .venv/
 
-# Python cache files — auto-generated, not needed in version control
+# Python cache files - auto-generated, not needed in version control
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 
-# Run output files — these are generated data, not source code
+# Run output files - these are generated data, not source code
 runs/
 logs/
 
-# SQLite database file (contains your run history — keep locally)
+# SQLite database file (contains your run history - keep locally)
 *.db
 *.sqlite3
 
@@ -2110,10 +2110,10 @@ logs/
 .AppleDouble
 .LSOverride
 
-# VS Code settings (optional — some teams commit this, some do not)
+# VS Code settings (optional - some teams commit this, some do not)
 .vscode/
 
-# Environment variable files (never commit these — they may contain secrets)
+# Environment variable files (never commit these - they may contain secrets)
 .env
 .env.local
 .env.*
@@ -2237,7 +2237,7 @@ code /Users/andyyaro/Downloads/multi-modal-workflow
 VS Code will open with the project folder in the Explorer panel on the left. You
 should see all the folders and files you just created.
 
-**Set the Python interpreter** (if you have not already — see Section 5.10):
+**Set the Python interpreter** (if you have not already - see Section 5.10):
 - Press `Command + Shift + P`
 - Type `Python: Select Interpreter`
 - Select the `.venv` interpreter
@@ -2300,12 +2300,12 @@ before moving on. The pipeline code in later sections assumes this exact structu
 
 ---
 
-> **Next sections to write:** Section 8 (Phase 1 — First Local Model Call) and
-> Section 9 (Phase 2 — Builder → Critic Terminal Loop).
+> **Next sections to write:** Section 8 (Phase 1 - First Local Model Call) and
+> Section 9 (Phase 2 - Builder → Critic Terminal Loop).
 
 ---
 
-# SECTION 8 — Phase 1: First Local Model Call
+# SECTION 8 - Phase 1: First Local Model Call
 
 This is the simplest possible test. One Python file, one prompt, one model call,
 one printed response. Before building the full pipeline, you need to confirm that
@@ -2457,7 +2457,7 @@ nodes during a training process guided by example data.
 [SUCCESS] Ollama is working correctly.
 ```
 
-The exact wording of the response will vary — model outputs are not deterministic.
+The exact wording of the response will vary - model outputs are not deterministic.
 What matters: a non-empty, coherent response appears, and the script exits without
 errors.
 
@@ -2475,21 +2475,21 @@ to the same model in the same session are much faster.
 [ERROR] Could not connect to Ollama.
 ```
 
-**Fix — Step 1:** Check if Ollama is running:
+**Fix - Step 1:** Check if Ollama is running:
 ```bash
 curl http://localhost:11434
 ```
 If this returns `Ollama is running`, the connection works and the Python error was
 transient. Run the script again.
 
-**Fix — Step 2:** If `curl` also fails, start Ollama:
+**Fix - Step 2:** If `curl` also fails, start Ollama:
 ```bash
 open -a Ollama
 # wait 5 seconds
 curl http://localhost:11434
 ```
 
-**Fix — Step 3:** If Ollama is running but the Python script still cannot connect,
+**Fix - Step 3:** If Ollama is running but the Python script still cannot connect,
 check that you are calling the right URL. The default port is `11434`. If you changed
 it (Section 4.8), update `OLLAMA_URL` in the script accordingly.
 
@@ -2549,7 +2549,7 @@ as the foundation for the `base_agent.py` in the next section.
 
 ---
 
-# SECTION 9 — Phase 2: Two-Agent Builder → Critic Terminal Loop
+# SECTION 9 - Phase 2: Two-Agent Builder → Critic Terminal Loop
 
 Now you build the first real two-agent workflow. The Builder writes a draft. The
 Critic reviews it. Both outputs are saved to files. This is still terminal-only.
@@ -2751,7 +2751,7 @@ code agents/critic.py
 agents/critic.py
 
 The Critic agent reviews a draft against the original goal and produces
-structured, actionable feedback. It does not rewrite — only critiques.
+structured, actionable feedback. It does not rewrite - only critiques.
 """
 
 from agents.base_agent import BaseAgent
@@ -2834,7 +2834,7 @@ You are an expert Critic agent in a multi-agent quality improvement system.
 
 Your job is to review a draft against the original goal and identify specific,
 actionable weaknesses. You are rigorous but fair. Your criticism must be
-specific — not vague.
+specific - not vague.
 
 Rules:
 - Read the original goal carefully before evaluating the draft.
@@ -2892,7 +2892,7 @@ from agents.critic import CriticAgent
 
 
 DEFAULT_MODEL_FAST = "llama3.2:3b"
-DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap default — upgrade via config/models.yaml
+DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap default - upgrade via config/models.yaml
 RUNS_DIR = Path("runs")
 
 
@@ -2941,7 +2941,7 @@ def main():
     run_dir = make_run_dir()
 
     print()
-    print("LOCAL AI ORCHESTRATOR — Phase 2: Builder → Critic")
+    print("LOCAL AI ORCHESTRATOR - Phase 2: Builder → Critic")
     print(f"Run directory : {run_dir}")
     print(f"Goal          : {goal}")
     print(f"Builder model : {args.model_main}")
@@ -3061,7 +3061,7 @@ code runs/
 
 A **useful critique** is specific and actionable. Signs it is working:
 
-**Good critique — what it looks like:**
+**Good critique - what it looks like:**
 ```
 Issue: The explanation skips the attention mechanism entirely.
 Location: Paragraphs 2–3
@@ -3076,7 +3076,7 @@ Overall: The draft covers the basics but has significant gaps that would
 confuse a developer trying to understand transformers in practice.
 ```
 
-**Poor critique — what to fix:**
+**Poor critique - what to fix:**
 ```
 The draft is good overall but could be improved in some areas.
 Consider making it more detailed and clearer.
@@ -3088,7 +3088,7 @@ If your critique looks like the poor example (vague, no specific issues), the
 ```
 IMPORTANT: Each issue must name the specific paragraph or section it refers to.
 Each fix must describe the exact change needed, not a general suggestion.
-Vague criticism like "make it clearer" is not acceptable — explain what is
+Vague criticism like "make it clearer" is not acceptable - explain what is
 unclear and why.
 ```
 
@@ -3185,17 +3185,17 @@ You have passed Phase 2 when:
 
 ---
 
-> **Next sections to write:** Section 10 (Phase 3 — Add Fixer and Judge) and
-> Section 11 (Phase 4 — Add the Reiteration Loop).
+> **Next sections to write:** Section 10 (Phase 3 - Add Fixer and Judge) and
+> Section 11 (Phase 4 - Add the Reiteration Loop).
 
 ---
 
-# SECTION 10 — Phase 3: Add Fixer and Judge
+# SECTION 10 - Phase 3: Add Fixer and Judge
 
 You now have Builder → Critic working. In this phase you add two more agents:
 
-- **Fixer** — takes the draft and the critique, produces an improved version.
-- **Judge** — scores the fixed draft and returns structured JSON with a pass/fail
+- **Fixer** - takes the draft and the critique, produces an improved version.
+- **Judge** - scores the fixed draft and returns structured JSON with a pass/fail
   decision.
 
 After this phase, the terminal pipeline is: Builder → Critic → Fixer → Judge.
@@ -3267,7 +3267,7 @@ Save the file.
 
 ## 10.2 Write the Judge agent
 
-The Judge is the most structurally important agent. It must return valid JSON —
+The Judge is the most structurally important agent. It must return valid JSON -
 not prose, not JSON embedded in markdown, not JSON with commentary around it.
 The code handles malformed output with a retry and a fallback parser.
 
@@ -3356,7 +3356,7 @@ Return ONLY the JSON object. No explanation, no markdown, no code fences.
                 return verdict
             print(f"  [Judge] Attempt {attempt}: could not parse JSON. Retrying...")
 
-        # All attempts failed — return a conservative fallback
+        # All attempts failed - return a conservative fallback
         print("  [Judge] WARNING: Could not parse Judge output after 3 attempts.")
         print(f"  [Judge] Raw output was:\n{raw[:500]}")
         return self._fallback_verdict(raw)
@@ -3468,11 +3468,11 @@ produce an improved version that addresses every issue raised.
 Rules:
 - Read the critique carefully before making any changes.
 - Address EVERY specific issue raised by the Critic. Do not skip any.
-- Do not just add a sentence to patch a problem — restructure or rewrite
+- Do not just add a sentence to patch a problem - restructure or rewrite
   sections if that is what is needed.
 - Maintain everything that was already working well in the original draft.
 - Do not introduce new problems while fixing existing ones.
-- The revised draft must be complete — not a summary of changes, not a
+- The revised draft must be complete - not a summary of changes, not a
   diff, but the full revised document ready to be re-evaluated.
 - Do not include meta-commentary like "I fixed the following issues..."
   Just produce the improved deliverable directly.
@@ -3494,7 +3494,7 @@ code prompts/judge.txt
 You are a strict Judge agent in a multi-agent quality improvement system.
 
 Your job is to score a draft against the original goal using a 100-point rubric.
-You must return ONLY a valid JSON object — no explanation, no markdown, no preamble.
+You must return ONLY a valid JSON object - no explanation, no markdown, no preamble.
 
 SCORING RUBRIC (each category is worth 0–25 points):
 
@@ -3627,7 +3627,7 @@ def main():
     run_dir = make_run_dir()
 
     print()
-    print("LOCAL AI ORCHESTRATOR — Phase 3: Builder → Critic → Fixer → Judge")
+    print("LOCAL AI ORCHESTRATOR - Phase 3: Builder → Critic → Fixer → Judge")
     print(f"Run dir   : {run_dir}")
     print(f"Goal      : {goal}")
     print(f"Threshold : {args.threshold}/100")
@@ -3713,7 +3713,7 @@ python run_phase3.py --goal "Explain the difference between supervised and unsup
 5. Summary prints with score breakdown.
 
 **Expected score range:** 55–85 on a first-pass revision. Scores below 70 are common
-on the first try — that is exactly why the loop in Phase 4 exists.
+on the first try - that is exactly why the loop in Phase 4 exists.
 
 **Verify the saved files:**
 ```bash
@@ -3805,7 +3805,7 @@ DEFAULT_THRESHOLD = 75
 - **Raise to 80+** for important deliverables where you want multiple revision cycles.
 - **Lower to 60** during development and testing to let the pipeline complete
   quickly while you are still tuning prompts.
-- **Never set below 50** — a score below 50 typically means the output has
+- **Never set below 50** - a score below 50 typically means the output has
   fundamental problems that more loops will not fix. Consider rephrasing the goal.
 
 ---
@@ -3821,7 +3821,7 @@ You have passed Phase 3 when:
 
 ---
 
-# SECTION 11 — Phase 4: Add the Reiteration Loop
+# SECTION 11 - Phase 4: Add the Reiteration Loop
 
 This is the core of the system. The loop repeats (Critic → Fixer → Judge) until
 the output passes, the max loop count is reached, or improvement stalls.
@@ -4081,7 +4081,7 @@ Rules:
 - If the goal is already clear, keep the refined version close to the original.
 - If the goal is vague, make it more specific and actionable.
 - Do not add constraints the user did not ask for.
-- Do not change the intent — only clarify it.
+- Do not change the intent - only clarify it.
 ```
 
 ---
@@ -4105,7 +4105,7 @@ Rules:
 - For planning tasks: list the main phases or decision points.
 - For debugging tasks: list the hypotheses to test, in order.
 - For study tasks: plan the explanation arc (simple → complex, concept → example).
-- Do not write any content yet — only the plan.
+- Do not write any content yet - only the plan.
 - Each step should be 1–2 sentences describing what that section should contain.
 ```
 
@@ -4122,7 +4122,7 @@ You receive the best version of a draft that has already been through critique
 and revision. Your job is to polish it into a clean, final deliverable.
 
 Rules:
-- Do not change the substance or structure — it has already been validated.
+- Do not change the substance or structure - it has already been validated.
 - Fix any remaining awkward phrasing, grammatical issues, or formatting problems.
 - Improve transitions between sections if they feel abrupt.
 - Make sure headings, lists, and code blocks are consistently formatted.
@@ -4135,7 +4135,7 @@ Rules:
 
 ---
 
-## 11.4 Write the full reiteration loop — `run.py`
+## 11.4 Write the full reiteration loop - `run.py`
 
 This is the main entry point for the complete terminal MVP. It includes the full
 Supervisor → Planner → Builder → (Critic → Fixer → Judge) loop → Synthesizer
@@ -4183,7 +4183,7 @@ from agents.synthesizer import SynthesizerAgent
 # ── Defaults ──────────────────────────────────────────────────────────────────
 # These are fallback constants only. The actual models come from config/models.yaml
 # via get_model_for_role(). Switch active_profile there to change quality level.
-DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap — override via --model-main
+DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap - override via --model-main
 DEFAULT_MODEL_FAST = "llama3.2:3b"
 DEFAULT_MAX_LOOPS = 3
 DEFAULT_THRESHOLD = 70
@@ -4250,7 +4250,7 @@ def run_pipeline(
     }
 
     # ── SUPERVISOR ────────────────────────────────────────────────────────────
-    header("STEP 1", "SUPERVISOR — Refine goal & choose mode")
+    header("STEP 1", "SUPERVISOR - Refine goal & choose mode")
     supervisor = SupervisorAgent(model=model_fast)
     sup_result = supervisor.run(goal=goal)
     refined_goal = sup_result["refined_goal"]
@@ -4260,14 +4260,14 @@ def run_pipeline(
     print(f"    Mode         : {mode}")
 
     # ── PLANNER ───────────────────────────────────────────────────────────────
-    header("STEP 2", "PLANNER — Create execution plan")
+    header("STEP 2", "PLANNER - Create execution plan")
     planner = PlannerAgent(model=model_fast)
     plan = planner.run(goal=refined_goal, mode=mode)
     save(run_dir, "01_planner_plan.txt", plan)
     print(f"    Plan length  : {len(plan)} chars")
 
     # ── BUILDER (first draft) ─────────────────────────────────────────────────
-    header("STEP 3", "BUILDER — Write first draft")
+    header("STEP 3", "BUILDER - Write first draft")
     builder = BuilderAgent(model=model_main)
     draft = builder.run(goal=refined_goal, plan=plan)
     save(run_dir, "02_builder_draft_v0.txt", draft)
@@ -4342,7 +4342,7 @@ def run_pipeline(
         stop_reason = f"max_loops ({max_loops}) reached"
 
     # ── FINAL SYNTHESIZER ─────────────────────────────────────────────────────
-    header("FINAL", "SYNTHESIZER — Polish best draft")
+    header("FINAL", "SYNTHESIZER - Polish best draft")
     synthesizer = SynthesizerAgent(model=model_main)
     final_output = synthesizer.run(
         goal=refined_goal,
@@ -4364,7 +4364,7 @@ def run_pipeline(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local AI Orchestrator — full terminal pipeline"
+        description="Local AI Orchestrator - full terminal pipeline"
     )
     parser.add_argument("--goal", required=True,
                         help="The goal or task for the pipeline.")
@@ -4384,7 +4384,7 @@ def main():
 
     print()
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║         LOCAL AI ORCHESTRATOR — TERMINAL MVP            ║")
+    print("║         LOCAL AI ORCHESTRATOR - TERMINAL MVP            ║")
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"  Goal        : {args.goal[:70]}")
     print(f"  Main model  : {args.model_main}")
@@ -4502,7 +4502,7 @@ on pass or max_loops).
 
 ### If quality gets worse after revision
 
-This happens when the Fixer "over-corrects" — changing things that were already
+This happens when the Fixer "over-corrects" - changing things that were already
 good. The `best_draft` tracking handles this: even if iteration 3 scores lower
 than iteration 2, `best_draft.txt` always holds the highest-scored version.
 The Synthesizer always works from `best_draft`, not the most recent draft.
@@ -4514,14 +4514,14 @@ loops. Fix options:
 1. Lower `--threshold` to 60 temporarily to understand the scoring pattern.
 2. Open `prompts/judge.txt` and soften the rubric descriptions (change "25 = nothing
    is missing" to "25 = covers all major points").
-3. Switch the Judge model to `llama3.2:3b` temporarily — smaller models tend
+3. Switch the Judge model to `llama3.2:3b` temporarily - smaller models tend
    to be less harsh.
 
 ### If the Judge is too easy (everything passes on first try)
 
 Symptoms: First revision always scores 85+. The loop never repeats. Fix options:
 1. Raise `--threshold` to 80 or 85.
-2. Switch to a stricter Judge model — try `phi4:14b` (Serious Work profile) for
+2. Switch to a stricter Judge model - try `phi4:14b` (Serious Work profile) for
    more demanding structured evaluation.
 3. Add harder rubric criteria to `prompts/judge.txt` specific to your task type.
 
@@ -4556,16 +4556,16 @@ You have a working terminal MVP when:
 
 ---
 
-> **Next sections to write:** Section 12 (Phase 5 — LangGraph) and
-> Section 13 (Phase 6 — Streamlit Dashboard).
+> **Next sections to write:** Section 12 (Phase 5 - LangGraph) and
+> Section 13 (Phase 6 - Streamlit Dashboard).
 
 ---
 
-# SECTION 12 — Phase 5: Add LangGraph
+# SECTION 12 - Phase 5: Add LangGraph
 
 Only attempt this section after `python run.py` works end-to-end. LangGraph adds
 structured state management and explicit graph topology to the pipeline. It does not
-replace your working agents — it wraps them in a framework that makes the flow
+replace your working agents - it wraps them in a framework that makes the flow
 inspectable, debuggable, and extensible.
 
 ---
@@ -4579,12 +4579,12 @@ touching multiple places in the same function.
 
 LangGraph makes the pipeline into an explicit **graph**:
 
-- Each agent is a **node** — a named function that receives state and returns updated
+- Each agent is a **node** - a named function that receives state and returns updated
   state.
-- The transitions between agents are **edges** — either unconditional (always go to
+- The transitions between agents are **edges** - either unconditional (always go to
   the next node) or **conditional** (go to node A or node B based on state values).
 - The **state** is a single typed dict that every node reads from and writes to.
-  Nothing is passed via function arguments — everything flows through state.
+  Nothing is passed via function arguments - everything flows through state.
 
 Benefits for this project:
 - You can visualize the graph structure.
@@ -4617,7 +4617,7 @@ then reinstall.
 
 ## 12.3 What "state" means in LangGraph
 
-State is a Python `TypedDict` — a dictionary with declared key types. Every node
+State is a Python `TypedDict` - a dictionary with declared key types. Every node
 function receives the full current state and returns a partial dict of the keys it
 wants to update. LangGraph merges those updates into the state automatically.
 
@@ -4984,7 +4984,7 @@ from orchestrator.graph import build_graph
 
 RUNS_DIR = Path("runs")
 
-# Fallback constants only — real models come from config/models.yaml active_profile
+# Fallback constants only - real models come from config/models.yaml active_profile
 DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap default
 DEFAULT_MODEL_FAST = "llama3.2:3b"
 DEFAULT_MAX_LOOPS = 3
@@ -5020,7 +5020,7 @@ def main():
 
     print()
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║      LOCAL AI ORCHESTRATOR — LANGGRAPH PIPELINE         ║")
+    print("║      LOCAL AI ORCHESTRATOR - LANGGRAPH PIPELINE         ║")
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"  Goal       : {args.goal[:70]}")
     print(f"  Run dir    : {run_dir}")
@@ -5043,7 +5043,7 @@ def main():
         # stream_mode="values" yields the full state after each node
         for step_output in app.stream(initial_state, stream_mode="values"):
             # Print a progress indicator for each completed node
-            # (The state dict grows with each step — we just track the latest)
+            # (The state dict grows with each step - we just track the latest)
             if "final_output" in step_output:
                 pass  # handled in summary below
             elif "verdict" in step_output and step_output.get("scores"):
@@ -5159,7 +5159,7 @@ Use `run_langgraph.py` when:
 
 ---
 
-# SECTION 13 — Phase 6: Add Streamlit Dashboard
+# SECTION 13 - Phase 6: Add Streamlit Dashboard
 
 Build this only after `run.py` works end-to-end. The Streamlit dashboard is a local
 web interface that runs in your browser and wraps the same pipeline code.
@@ -5244,7 +5244,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Sidebar — configuration ───────────────────────────────────────────────────
+# ── Sidebar - configuration ───────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("⚙️ Configuration")
@@ -5675,13 +5675,13 @@ streamlit run app/streamlit_app.py
 
 Cause: Another Streamlit server is already running on port 8501.
 
-Fix option A — Kill the existing server:
+Fix option A - Kill the existing server:
 ```bash
 lsof -ti :8501 | xargs kill -9
 ```
 **What this does:** Finds the process ID using port 8501 and sends it a kill signal.
 
-Fix option B — Use a different port:
+Fix option B - Use a different port:
 ```bash
 streamlit run app/streamlit_app.py --server.port 8502
 ```
@@ -5692,7 +5692,7 @@ Then open `http://localhost:8502` in your browser.
 **Error: Pipeline output appears all at once instead of streaming**
 
 Cause: Streamlit's threading approach means the UI updates happen as queue events
-arrive, but the browser may batch them. This is normal behavior — the agents are
+arrive, but the browser may batch them. This is normal behavior - the agents are
 still running sequentially; the display just catches up.
 
 Fix: No fix needed. The events display as each agent completes, which is the correct
@@ -5738,14 +5738,14 @@ You have a working Streamlit dashboard when:
 
 ---
 
-# SECTION 14 — Phase 7: Add SQLite Run History
+# SECTION 14 - Phase 7: Add SQLite Run History
 
 ## 14.1 Why SQLite is enough for this project
 
 SQLite is a file-based database. The entire database lives in one `.db` file on your
 disk. There is no database server to install, no connection strings to configure, and
 no authentication to manage. Python's standard library includes full SQLite support
-via the `sqlite3` module — no additional packages needed.
+via the `sqlite3` module - no additional packages needed.
 
 For this project, SQLite is ideal because:
 - You are the only user. No concurrent writes, no scaling concerns.
@@ -5761,11 +5761,11 @@ For this project, SQLite is ideal because:
 
 You need two tables:
 
-**`runs`** — one row per pipeline execution:
+**`runs`** - one row per pipeline execution:
 - run ID, timestamp, goal, mode, model names, final score, pass/fail, stop reason,
   loop count, score history, run directory path.
 
-**`iterations`** — one row per loop iteration within a run:
+**`iterations`** - one row per loop iteration within a run:
 - foreign key to `runs`, iteration number, critique text, revised draft text,
   judge scores JSON, total score.
 
@@ -6165,7 +6165,7 @@ def main():
             print(f"No run found with ID {args.run_id}")
             return
         print(f"\n{'='*60}")
-        print(f"  Run #{run['id']} — {run['timestamp']}")
+        print(f"  Run #{run['id']} - {run['timestamp']}")
         print(f"{'='*60}")
         print(f"  Goal         : {run['goal']}")
         print(f"  Refined goal : {run['refined_goal']}")
@@ -6251,7 +6251,7 @@ else:
         "Select a past run to view",
         options=[r["id"] for r in runs],
         format_func=lambda rid: next(
-            f"#{r['id']} — {r['timestamp'][:16]} — "
+            f"#{r['id']} - {r['timestamp'][:16]} - "
             f"{r['goal'][:50]}{'...' if len(r['goal']) > 50 else ''} "
             f"[{r['final_score']}/100]"
             for r in runs if r["id"] == rid
@@ -6357,7 +6357,7 @@ is wrong with your `.gitignore`. Do not commit them.
 
 ---
 
-# SECTION 15 — Workflow Modes
+# SECTION 15 - Workflow Modes
 
 Workflow modes let the pipeline adapt its prompts and scoring rubric to the type
 of task. A coding task should be judged on correctness and runnability. A writing
@@ -6442,7 +6442,7 @@ modes:
       This is a PLANNING task. The output must be:
       - A structured, numbered plan
       - Each phase or step includes: what, why, and success criteria
-      - Realistic and actionable — avoid vague recommendations
+      - Realistic and actionable - avoid vague recommendations
       - Ordered logically (dependencies considered)
       Avoid writing lengthy prose. Use structured lists, tables, or numbered steps.
     scoring_weights:
@@ -6623,7 +6623,7 @@ Now write the complete deliverable according to the plan above.
         return result
 ```
 
-Update `agents/fixer.py` `run()` method similarly — add `mode: str = "general"`
+Update `agents/fixer.py` `run()` method similarly - add `mode: str = "general"`
 parameter and inject `get_prompt_suffix(mode)` at the top of `full_prompt`.
 
 Update `agents/judge.py` `run()` method to inject the mode's judge note and
@@ -6667,7 +6667,7 @@ Pass `mode` through from the pipeline caller in `run.py` and `run_langgraph.py`.
 ## 15.5 Per-mode output expectations
 
 ### Writing mode
-- Output: full prose — introduction, body paragraphs, conclusion.
+- Output: full prose - introduction, body paragraphs, conclusion.
 - What it should NOT do: return a bullet list when the goal asks for an essay;
   truncate mid-section; add "I hope this helps" or similar filler.
 
@@ -6689,7 +6689,7 @@ Pass `mode` through from the pipeline caller in `run.py` and `run_langgraph.py`.
   fixes without explaining why they would work; skip the verification step.
 
 ### Study mode
-- Output: layered explanation — one-sentence summary → fuller explanation →
+- Output: layered explanation - one-sentence summary → fuller explanation →
   analogy → example → next steps.
 - What it should NOT do: assume the reader knows domain vocabulary; produce
   a Wikipedia-style encyclopedic entry without a learning arc; omit examples.
@@ -6742,7 +6742,7 @@ After each run, check that:
 To add a new mode (e.g., `research` or `summarization`):
 
 1. Add a new entry to `config/modes.yaml` following the existing format.
-2. No Python code changes needed — `get_mode_config()` reads any key from the file.
+2. No Python code changes needed - `get_mode_config()` reads any key from the file.
 3. Add the mode name to the Streamlit sidebar `selectbox` options list in
    `app/streamlit_app.py`.
 4. Add a test case in `tests/`.
@@ -6758,7 +6758,7 @@ To add a new mode (e.g., `research` or `summarization`):
 
 ---
 
-# SECTION 16 — Coding Verification
+# SECTION 16 - Coding Verification
 
 For coding tasks, you do not want the pipeline to pass a draft just because the
 Judge model *thinks* the code is correct. Models hallucinate working code. The only
@@ -7043,7 +7043,7 @@ Replace it with:
             if run_result.success:
                 print(f"  [Verifier] ✓ Code ran successfully")
             else:
-                print(f"  [Verifier] ✗ Code failed — injecting error into critique")
+                print(f"  [Verifier] ✗ Code failed - injecting error into critique")
                 # Append error to critique so Fixer sees it in next iteration
                 critique = critique + f"\n\nCODE EXECUTION RESULT:\n{code_feedback}"
                 save(run_dir, f"loop{iteration:02d}_critic.txt", critique)
@@ -7222,7 +7222,7 @@ def lint_python_code(code: str) -> dict:
     Run ruff on the provided Python code string.
 
     Returns:
-        clean: bool — True if no lint errors found
+        clean: bool - True if no lint errors found
         issues: list of issue strings
         output: full ruff stdout
     """
@@ -7251,7 +7251,7 @@ def lint_python_code(code: str) -> dict:
         return {
             "clean": True,
             "issues": [],
-            "output": "ruff not installed — skipping lint check",
+            "output": "ruff not installed - skipping lint check",
         }
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -7304,9 +7304,9 @@ def verify_coding_draft(draft: str) -> dict:
     Run full verification pipeline on a coding draft.
 
     Returns:
-        feedback: str  — combined feedback for Fixer/Critic
-        hard_fail: bool — True if code should not be allowed to pass
-        details: dict  — individual results from each verification step
+        feedback: str  - combined feedback for Fixer/Critic
+        hard_fail: bool - True if code should not be allowed to pass
+        details: dict  - individual results from each verification step
     """
     code = extract_python_code(draft)
     if code is None:
@@ -7421,7 +7421,7 @@ runs/20240115_160000/
 
 ---
 
-# SECTION 17 — Prompt Templates
+# SECTION 17 - Prompt Templates
 
 These are the production-quality, final prompt templates for all seven agents.
 They replace the minimal templates you created in earlier sections. Each one is
@@ -7431,7 +7431,7 @@ Copy each block below exactly into its corresponding file.
 
 ---
 
-## 17.1 Supervisor — `prompts/supervisor.txt`
+## 17.1 Supervisor - `prompts/supervisor.txt`
 
 ```bash
 code prompts/supervisor.txt
@@ -7461,10 +7461,10 @@ HOW TO REWRITE THE GOAL:
 - If it is ambiguous (could be writing or coding), ask yourself: what output would
   satisfy this user? Code? Prose? A plan? Let that answer guide the mode.
 - Do not add constraints the user did not state.
-- Do not change the intent — only improve the clarity and precision.
+- Do not change the intent - only improve the clarity and precision.
 - The refined goal should be one paragraph or less.
 
-OUTPUT FORMAT (required — two labeled lines):
+OUTPUT FORMAT (required - two labeled lines):
 REFINED GOAL: <single clear problem statement>
 MODE: <one word from the modes list above>
 
@@ -7477,7 +7477,7 @@ FAILURE MODES TO AVOID:
 
 ---
 
-## 17.2 Planner — `prompts/planner.txt`
+## 17.2 Planner - `prompts/planner.txt`
 
 ```bash
 code prompts/planner.txt
@@ -7489,7 +7489,7 @@ You are the Planner agent in a high-quality multi-agent AI pipeline.
 YOUR ROLE:
 You receive a clear goal and a workflow mode. You produce a structured,
 numbered plan that the Builder agent will follow to create the deliverable.
-You are the architect. You do not build anything yet — you design the blueprint.
+You are the architect. You do not build anything yet - you design the blueprint.
 
 HOW TO WRITE THE PLAN:
 - Write 4–8 numbered steps. Fewer for simple tasks, more for complex ones.
@@ -7509,17 +7509,17 @@ WHAT TO AVOID:
 - Do not write vague steps like "make it good" or "improve the quality".
 - Do not repeat the goal verbatim as a step.
 - Do not include more than 8 steps unless the task genuinely requires it.
-- Do not add meta-commentary like "Here is my plan:" — just start with Step 1.
+- Do not add meta-commentary like "Here is my plan:" - just start with Step 1.
 
 OUTPUT FORMAT:
-Step 1: [title] — [what this section contains and why]
-Step 2: [title] — [what this section contains and why]
+Step 1: [title] - [what this section contains and why]
+Step 2: [title] - [what this section contains and why]
 ... and so on.
 ```
 
 ---
 
-## 17.3 Builder — `prompts/builder.txt`
+## 17.3 Builder - `prompts/builder.txt`
 
 ```bash
 code prompts/builder.txt
@@ -7530,14 +7530,14 @@ You are the Builder agent in a high-quality multi-agent AI pipeline.
 
 YOUR ROLE:
 You receive a goal, a mode, and a structured plan. You write the complete,
-full deliverable based on that plan. This is the first draft — it will be
+full deliverable based on that plan. This is the first draft - it will be
 reviewed and improved, but it must be substantive and complete from the start.
 
 RULES:
 - Write the COMPLETE deliverable. Not a summary, not an outline, not a preview.
 - Follow the plan's structure, but use your full expertise for each section.
 - Every step in the plan must appear in your output, fully developed.
-- Do not skip sections with "this section would cover..." — write the section.
+- Do not skip sections with "this section would cover..." - write the section.
 - Do not truncate. If the plan has 6 steps, your output has 6 full sections.
 
 FOR WRITING TASKS:
@@ -7551,7 +7551,7 @@ FOR CODING TASKS:
 - Include all necessary imports at the top.
 - Include a brief docstring on each function.
 - Include a __main__ block or usage example at the bottom.
-- Write code that actually runs — not pseudocode, not placeholders.
+- Write code that actually runs - not pseudocode, not placeholders.
 
 FOR PLANNING TASKS:
 - Use numbered phases with sub-tasks.
@@ -7578,7 +7578,7 @@ WHAT TO NEVER DO:
 
 ---
 
-## 17.4 Critic — `prompts/critic.txt`
+## 17.4 Critic - `prompts/critic.txt`
 
 ```bash
 code prompts/critic.txt
@@ -7590,7 +7590,7 @@ You are the Critic agent in a high-quality multi-agent AI pipeline.
 YOUR ROLE:
 You review a draft against the original goal and identify every specific,
 actionable weakness. You are rigorous, specific, and constructive. You do not
-rewrite — you only critique. Your feedback is the fuel that makes the next
+rewrite - you only critique. Your feedback is the fuel that makes the next
 revision better.
 
 RULES FOR EVERY CRITIQUE:
@@ -7601,7 +7601,7 @@ RULES FOR EVERY CRITIQUE:
 - For each issue, you MUST provide:
     Issue: what is wrong, precisely
     Location: where in the draft (section name, paragraph number, or line)
-    Fix: exactly what should be done (not "improve this" — say HOW)
+    Fix: exactly what should be done (not "improve this" - say HOW)
 
 TYPES OF ISSUES TO LOOK FOR:
 - Missing content: sections the goal asked for that are absent
@@ -7631,14 +7631,14 @@ Overall: [one sentence summarizing the most important thing to fix]
 
 WHAT TO AVOID:
 - Do not rewrite the draft or provide corrected text.
-- Do not praise sections at length — one word acknowledgement is enough.
+- Do not praise sections at length - one word acknowledgement is enough.
 - Do not be vague. Every issue must be locatable and fixable.
-- Do not list more than 8 issues — prioritize the most important ones.
+- Do not list more than 8 issues - prioritize the most important ones.
 ```
 
 ---
 
-## 17.5 Fixer — `prompts/fixer.txt`
+## 17.5 Fixer - `prompts/fixer.txt`
 
 ```bash
 code prompts/fixer.txt
@@ -7657,23 +7657,23 @@ HOW TO APPROACH REVISION:
 1. Read the original goal first. Every change must serve that goal.
 2. Read the critique carefully. List mentally what needs to change.
 3. Work through the draft section by section, addressing each critique point.
-4. Do not just patch — if a section is fundamentally weak, rewrite it.
+4. Do not just patch - if a section is fundamentally weak, rewrite it.
 5. Preserve everything that was already working well.
 
 RULES:
 - Address EVERY issue the Critic raised. Skipping even one is a failure.
-- The revised draft must be complete — not a list of changes, not a diff,
+- The revised draft must be complete - not a list of changes, not a diff,
   but the full revised document from start to finish.
 - Do not include meta-commentary like "I addressed the following issues..."
-  or "As the Critic noted..." — produce the deliverable directly.
+  or "As the Critic noted..." - produce the deliverable directly.
 - Do not introduce new problems while fixing existing ones.
-- Do not shorten the draft to fix it — add what was missing, rewrite what
+- Do not shorten the draft to fix it - add what was missing, rewrite what
   was wrong, and keep what was good.
 - If you disagree with a critique point, address it anyway. Your job is
   revision, not debate.
 
 FOR CODING TASKS:
-- If the code had execution errors, fix the root cause — not just the symptom.
+- If the code had execution errors, fix the root cause - not just the symptom.
 - If tests failed, fix the code logic, not the tests.
 - Ensure all imports are present and correct.
 - Re-verify your logic mentally before outputting the revised code.
@@ -7687,7 +7687,7 @@ WHAT TO NEVER DO:
 
 ---
 
-## 17.6 Judge — `prompts/judge.txt`
+## 17.6 Judge - `prompts/judge.txt`
 
 ```bash
 code prompts/judge.txt
@@ -7699,7 +7699,7 @@ You are the Judge agent in a high-quality multi-agent AI pipeline.
 YOUR ROLE:
 Score a draft against the original goal using a structured rubric. Return a
 single valid JSON object and nothing else. Your scoring must be honest and
-calibrated — not generous, not harsh. A score of 70 means "good enough for
+calibrated - not generous, not harsh. A score of 70 means "good enough for
 most purposes." A score of 90 means "genuinely excellent." A score of 50 means
 "incomplete or significantly flawed."
 
@@ -7756,8 +7756,8 @@ REQUIRED JSON SCHEMA:
         "clarity": <integer 0–25>,
         "usefulness": <integer 0–25>
     },
-    "total_score": <integer — must equal exact sum of the four scores>,
-    "pass": <boolean — true if total_score >= threshold AND no hard fails>,
+    "total_score": <integer - must equal exact sum of the four scores>,
+    "pass": <boolean - true if total_score >= threshold AND no hard fails>,
     "hard_fails": [<string>, ...],
     "rationale": "<one paragraph, 2–4 sentences, explaining the key scores>"
 }
@@ -7778,7 +7778,7 @@ COMMON FAILURE MODES TO AVOID:
 
 ---
 
-## 17.7 Final Synthesizer — `prompts/synthesizer.txt`
+## 17.7 Final Synthesizer - `prompts/synthesizer.txt`
 
 ```bash
 code prompts/synthesizer.txt
@@ -7796,7 +7796,7 @@ presentation-ready final deliverable.
 WHAT YOU ARE POLISHING (not rewriting):
 The substance, structure, and content have already been validated. You are
 the final editor, not a new author. Your changes should be invisible to the
-reader — the output should feel like one expert wrote it from scratch.
+reader - the output should feel like one expert wrote it from scratch.
 
 WHAT TO DO:
 - Fix any remaining grammatical errors or typos.
@@ -7811,14 +7811,14 @@ WHAT TO DO:
     - "Note: this has been revised from the previous version..."
 - Tighten any verbose passages without removing content.
 - Ensure the opening sentence is strong and sets up the content well.
-- Ensure the closing is conclusive — not "I hope this helps" or trailing off.
+- Ensure the closing is conclusive - not "I hope this helps" or trailing off.
 
 WHAT NOT TO DO:
 - Do not remove sections, shorten the content, or change the substance.
 - Do not add new information or opinions that were not in the draft.
 - Do not add meta-commentary ("Here is the final polished version:").
 - Do not add a preamble or closing note from you. Output the deliverable directly.
-- Do not change code logic — only fix formatting of code blocks.
+- Do not change code logic - only fix formatting of code blocks.
 
 OUTPUT:
 The complete polished deliverable, ready for the user to read or use directly.
@@ -7870,13 +7870,13 @@ can be rolled back with `git checkout prompts/critic.txt`.
 
 ---
 
-# SECTION 18 — Configuration Files and Future API Scalability
+# SECTION 18 - Configuration Files and Future API Scalability
 
 ## 18.1 Design philosophy
 
 The system is local-first by default. No API keys. No internet connection after models are downloaded. No cost. But the
 architecture is designed so that swapping from Ollama to OpenAI, Anthropic, or any
-other provider requires changing one config value — not rewriting Python code.
+other provider requires changing one config value - not rewriting Python code.
 
 This is achieved through a **model adapter layer**: all agent code calls a single
 `call_model()` function on `BaseAgent`. That function currently calls Ollama. To
@@ -7903,9 +7903,9 @@ code config/models.yaml
 # Change values here to swap models without editing Python code.
 #
 # PROVIDER OPTIONS (default: ollama):
-#   ollama    — local models via Ollama (free, no API key needed)
-#   openai    — OpenAI API (requires OPENAI_API_KEY in .env) [future]
-#   anthropic — Anthropic API (requires ANTHROPIC_API_KEY in .env) [future]
+#   ollama    - local models via Ollama (free, no API key needed)
+#   openai    - OpenAI API (requires OPENAI_API_KEY in .env) [future]
+#   anthropic - Anthropic API (requires ANTHROPIC_API_KEY in .env) [future]
 
 provider: ollama
 
@@ -7917,10 +7917,10 @@ ollama:
 # Set this to switch the entire model stack without editing individual roles.
 # Options: bootstrap | serious | coding | fast
 #
-# bootstrap : llama3.2:3b for everything — use to verify the pipeline works
-# serious   : qwen2.5:14b builder, phi4:14b judge, gemma3:12b critic — real work
-# coding    : qwen2.5-coder:14b builder/fixer — Python and debugging tasks
-# fast      : llama3.1:8b builder, llama3.2:3b for routing — quick iteration
+# bootstrap : llama3.2:3b for everything - use to verify the pipeline works
+# serious   : qwen2.5:14b builder, phi4:14b judge, gemma3:12b critic - real work
+# coding    : qwen2.5-coder:14b builder/fixer - Python and debugging tasks
+# fast      : llama3.1:8b builder, llama3.2:3b for routing - quick iteration
 #
 # Start with bootstrap. Switch to serious once the loop runs end-to-end.
 
@@ -7995,9 +7995,9 @@ defaults:
 
 # ── MEMORY MANAGEMENT ────────────────────────────────────────────────────────
 # keep_alive controls how long Ollama holds a model in RAM after a call.
-# "5m"  = 5 minutes — recommended for sequential pipeline calls
-# "0"   = unload immediately — use if you need to load a different large model next
-# "-1"  = keep indefinitely — not recommended on 24 GB
+# "5m"  = 5 minutes - recommended for sequential pipeline calls
+# "0"   = unload immediately - use if you need to load a different large model next
+# "-1"  = keep indefinitely - not recommended on 24 GB
 memory:
   keep_alive: "5m"
 ```
@@ -8227,7 +8227,7 @@ class OllamaAdapter(ModelAdapter):
                 "Try a smaller model or check memory pressure."
             )
         except requests.exceptions.HTTPError as e:
-            raise RuntimeError(f"Ollama HTTP error: {e} — {resp.text[:300]}")
+            raise RuntimeError(f"Ollama HTTP error: {e} - {resp.text[:300]}")
 
 
 # ── Future adapter stubs ──────────────────────────────────────────────────────
@@ -8276,7 +8276,7 @@ _adapter_cache: ModelAdapter | None = None
 def get_adapter() -> ModelAdapter:
     """
     Return the active ModelAdapter based on config/models.yaml provider setting.
-    Cached after first call — call reload_config() to reset.
+    Cached after first call - call reload_config() to reset.
     """
     global _adapter_cache
     if _adapter_cache is not None:
@@ -8346,7 +8346,7 @@ Open `agents/base_agent.py`. Replace the `call_model()` method body with:
         self._fatal("All retry attempts exhausted.")
 ```
 
-Now `BaseAgent` never imports `requests` directly — all HTTP logic lives in the
+Now `BaseAgent` never imports `requests` directly - all HTTP logic lives in the
 adapter. Adding a new provider in the future does not touch `base_agent.py` at all.
 
 ---
@@ -8362,7 +8362,7 @@ code .env
 ```
 
 ```bash
-# .env — environment variables for the Local AI Orchestrator
+# .env - environment variables for the Local AI Orchestrator
 # This file is excluded from Git (.gitignore). Never commit it.
 
 # Ollama server URL (change if you moved Ollama to a different port)
@@ -8478,7 +8478,7 @@ To switch back to local Ollama: change `provider: openai` back to `provider: oll
 
 ---
 
-# SECTION 19 — Logging, Debugging, and Error Handling
+# SECTION 19 - Logging, Debugging, and Error Handling
 
 ## 19.1 Set up structured logging
 
@@ -8697,7 +8697,7 @@ for line in sys.stdin:
 
 ---
 
-## 19.4 What to log — quick reference
+## 19.4 What to log - quick reference
 
 | What | Log event | Why |
 |---|---|---|
@@ -8718,12 +8718,12 @@ for line in sys.stdin:
 The pipeline encounters three types of malformed output:
 
 **Type 1: Empty response**
-Handled in `BaseAgent.call_model()` — retries up to `max_retries` times. After
+Handled in `BaseAgent.call_model()` - retries up to `max_retries` times. After
 all retries, calls `self._fatal()` which prints the error and exits with code 1.
 Never silently returns an empty string.
 
 **Type 2: JSON expected but prose returned (Judge)**
-Handled in `JudgeAgent._parse_json()` — three levels of extraction (direct parse,
+Handled in `JudgeAgent._parse_json()` - three levels of extraction (direct parse,
 strip fences, find first `{...}` block). After three model call attempts, falls
 back to `_fallback_verdict()` which returns score 40, `hard_fail: ["judge_parse_error"]`.
 Logs the raw output via `log.json_parse_failure()`.
@@ -8743,15 +8743,15 @@ if text.endswith(("...", "…")) or len(text) > 3000 and not text[-1] in ".!?\n}
 
 The retry pattern in `BaseAgent.call_model()` follows these rules:
 
-1. **Retry on transient errors** (timeout, empty response) — these can succeed
+1. **Retry on transient errors** (timeout, empty response) - these can succeed
    on the next attempt.
-2. **Do not retry on connection refused** — if Ollama is not running, retrying
+2. **Do not retry on connection refused** - if Ollama is not running, retrying
    will not help. Fail fast with a clear message.
-3. **Wait between retries** — `time.sleep(3)` prevents hammering a temporarily
+3. **Wait between retries** - `time.sleep(3)` prevents hammering a temporarily
    overloaded server.
-4. **Limit retries** — default `max_retries=2` means 3 total attempts. More than
+4. **Limit retries** - default `max_retries=2` means 3 total attempts. More than
    3 attempts on a bad model call wastes time.
-5. **Log every retry** — so you can see in the log that a retry occurred.
+5. **Log every retry** - so you can see in the log that a retry occurred.
 
 ---
 
@@ -8776,14 +8776,14 @@ a corresponding `agent_end` confirms that agent did not finish.
 
 **Step 3:** You can resume manually from the last saved file. For example, if
 the crash happened during the Fixer in loop 2, you have:
-- `loop01_critic.txt` — saved
-- `loop01_fixer.txt` — saved
-- `loop01_judge.json` — saved
-- `loop02_critic.txt` — saved
-- `loop02_fixer.txt` — **missing (crash happened here)**
+- `loop01_critic.txt` - saved
+- `loop01_fixer.txt` - saved
+- `loop01_judge.json` - saved
+- `loop02_critic.txt` - saved
+- `loop02_fixer.txt` - **missing (crash happened here)**
 
 You can resume from `loop02_critic.txt` by manually running the Fixer and Judge
-with a small script, or simply re-run the full pipeline — the added cost is one
+with a small script, or simply re-run the full pipeline - the added cost is one
 Builder call and repeating the completed loops.
 
 **Step 4:** If Ollama crashed (not just the Python script):
@@ -8798,7 +8798,7 @@ Wait 5 seconds, then re-run the pipeline.
 
 ---
 
-# SECTION 20 — Common Issues and Remedies
+# SECTION 20 - Common Issues and Remedies
 
 ---
 
@@ -8873,7 +8873,7 @@ ollama list
 # Pull the missing model (use whatever model name config/models.yaml expects)
 ollama pull llama3.2:3b         # Bootstrap profile
 # or
-ollama pull qwen2.5:14b         # Serious Work profile — Builder/Fixer/Synthesizer
+ollama pull qwen2.5:14b         # Serious Work profile - Builder/Fixer/Synthesizer
 
 # Check the exact name after pulling
 ollama list
@@ -8889,19 +8889,19 @@ Update `config/models.yaml` with the exact tag shown in `ollama list`, or switch
 
 **Symptom:** Each agent call takes 2+ minutes. The terminal appears frozen.
 
-**Cause:** Memory pressure — the Mac is swapping the model to disk — or the
+**Cause:** Memory pressure - the Mac is swapping the model to disk - or the
 model simply needs more time on longer prompts (14B models take 20–50 seconds
 on typical prompts, which is normal and not a problem).
 
-**Fix — Step 1:** Distinguish slow vs. broken.
+**Fix - Step 1:** Distinguish slow vs. broken.
 A 14B model responding in 30–60 seconds is normal on M3. Only investigate if
 a response takes 2+ minutes on a short prompt.
 
-**Fix — Step 2:** Check memory pressure:
+**Fix - Step 2:** Check memory pressure:
 Open Activity Monitor → Memory tab. If pressure is yellow or red, close other
 large apps (browsers with many tabs, Slack, Spotify, Xcode).
 
-**Fix — Step 3:** Drop to the Fast profile temporarily:
+**Fix - Step 3:** Drop to the Fast profile temporarily:
 ```yaml
 # config/models.yaml
 active_profile: fast
@@ -8910,14 +8910,14 @@ active_profile: fast
 python run.py --goal "..." --model-main llama3.1:8b --model-fast llama3.2:3b
 ```
 
-**Fix — Step 4:** Unload models between calls if RAM is tight:
+**Fix - Step 4:** Unload models between calls if RAM is tight:
 ```bash
 export OLLAMA_KEEP_ALIVE=0
 ```
 
 **Verify:** `ollama run llama3.2:3b "one word answer: color of sky"` responds
 in under 15 seconds. If the serious-profile model (e.g. `qwen2.5:14b`) takes
-30–60 seconds, that is expected — do not treat it as a problem.
+30–60 seconds, that is expected - do not treat it as a problem.
 
 ---
 
@@ -8929,7 +8929,7 @@ The Bootstrap profile (`llama3.2:3b`) is fast, but Serious Work profile is painf
 **Cause:** The model is being loaded from disk on every call (model unloading
 between calls), or another app is competing for GPU/RAM bandwidth.
 
-**Fix — Step 1:** Ensure `keep_alive` is not set to `"0"`:
+**Fix - Step 1:** Ensure `keep_alive` is not set to `"0"`:
 ```yaml
 # config/models.yaml
 memory:
@@ -8939,7 +8939,7 @@ With `keep_alive: "5m"`, a 14B model loaded for the Builder call stays warm
 for the Fixer and Synthesizer calls in the same pipeline run, avoiding repeated
 disk loads.
 
-**Fix — Step 2:** Check if another Ollama model is still loaded from a previous
+**Fix - Step 2:** Check if another Ollama model is still loaded from a previous
 session, consuming RAM:
 ```bash
 curl http://localhost:11434/api/ps
@@ -9118,17 +9118,17 @@ streamlit run app/streamlit_app.py
 - Streamlit: `OSError: [Errno 48] Address already in use`
 - Ollama: `Error: listen tcp: bind: address already in use`
 
-**Fix — Streamlit (port 8501):**
+**Fix - Streamlit (port 8501):**
 ```bash
 lsof -ti :8501 | xargs kill -9
 streamlit run app/streamlit_app.py
 ```
 
-**Fix — Ollama (port 11434):**
+**Fix - Ollama (port 11434):**
 ```bash
 lsof -i :11434
 ```
-If it shows `ollama`, a server is already running — do not start another.
+If it shows `ollama`, a server is already running - do not start another.
 If it shows something else, change Ollama's port:
 ```bash
 OLLAMA_HOST=127.0.0.1:11435 ollama serve
@@ -9151,25 +9151,25 @@ ollama:
 **Cause:** The Judge model is returning prose or markdown around the JSON instead
 of a bare JSON object.
 
-**Fix — Step 1:** Open `prompts/judge.txt` and add as the very first line:
+**Fix - Step 1:** Open `prompts/judge.txt` and add as the very first line:
 ```
 CRITICAL: Your response must begin with { and end with }. Nothing else.
 ```
 
-**Fix — Step 2:** If still failing, try a different model for the Judge role
+**Fix - Step 2:** If still failing, try a different model for the Judge role
 that is better at instruction-following:
 Switch to the Serious Work profile Judge, which is trained for structured output:
 ```yaml
 # config/models.yaml
-active_profile: serious   # phi4:14b as Judge — best JSON compliance of the four profiles
+active_profile: serious   # phi4:14b as Judge - best JSON compliance of the four profiles
 ```
 Or if staying on Bootstrap, explicitly override just the judge role via the
 `mode_overrides` block (Section 18.2).
 
-**Fix — Step 3:** Lower `num_ctx` in the Judge call. Long contexts increase the
+**Fix - Step 3:** Lower `num_ctx` in the Judge call. Long contexts increase the
 chance of output format drift.
 
-**Verify:** After a pipeline run, check `loop01_judge.json` — it should contain
+**Verify:** After a pipeline run, check `loop01_judge.json` - it should contain
 a real JSON object, not a `raw_judge_output` key.
 
 ---
@@ -9189,7 +9189,7 @@ valid fix. Vague feedback will be treated as a pipeline failure.
 ```
 Also consider using a stronger model for the Critic by switching profiles:
 ```yaml
-active_profile: serious   # gemma3:12b as Critic — trained for structured critique
+active_profile: serious   # gemma3:12b as Critic - trained for structured critique
 ```
 
 **Verify:** Next critique contains at least 3 numbered, specific issues.
@@ -9203,14 +9203,14 @@ active_profile: serious   # gemma3:12b as Critic — trained for structured crit
 **Cause:** The Judge model is applying an overly harsh interpretation of the
 rubric, possibly because it misunderstands the scoring scale.
 
-**Fix — Option A:** Lower the threshold for testing:
+**Fix - Option A:** Lower the threshold for testing:
 ```bash
 python run.py --goal "..." --threshold 45
 ```
-If it now passes, the rubric is calibrated correctly — your real threshold was
+If it now passes, the rubric is calibrated correctly - your real threshold was
 just too high for the current model quality.
 
-**Fix — Option B:** Recalibrate the rubric in `prompts/judge.txt`. Change the
+**Fix - Option B:** Recalibrate the rubric in `prompts/judge.txt`. Change the
 score descriptions to be more generous:
 ```
 20 = most key points addressed, minor gaps
@@ -9220,7 +9220,7 @@ instead of:
 20 = significant sections missing
 ```
 
-**Fix — Option C:** Use a different model for the Judge. Some smaller models
+**Fix - Option C:** Use a different model for the Judge. Some smaller models
 score more fairly than others on structured rubrics.
 
 **Verify:** A clearly good draft (try pasting strong human-written text as the
@@ -9247,7 +9247,7 @@ python run.py --goal "..." --threshold 80
 ```
 
 **Verify:** Run the pipeline on a deliberately weak goal ("write one word about
-cats") — the Judge should score it below 40.
+cats") - the Judge should score it below 40.
 
 ---
 
@@ -9259,17 +9259,17 @@ between 55 and 65 without improving.
 **Cause:** The Fixer is not substantially improving the output, the Judge
 threshold is too high for the model, or `min_improvement` is too low.
 
-**Fix — Option A:** Raise `min_improvement` to stop sooner when stalled:
+**Fix - Option A:** Raise `min_improvement` to stop sooner when stalled:
 ```bash
 python run.py --goal "..." --min-improvement 8
 ```
 
-**Fix — Option B:** Lower the threshold so achievable quality can pass:
+**Fix - Option B:** Lower the threshold so achievable quality can pass:
 ```bash
 python run.py --goal "..." --threshold 60
 ```
 
-**Fix — Option C:** Use a stronger model for Builder/Fixer:
+**Fix - Option C:** Use a stronger model for Builder/Fixer:
 ```yaml
 models:
   builder: "llama3.1:8b"
@@ -9288,20 +9288,20 @@ The Fixer or Synthesizer degraded the content.
 **Cause:** The Fixer made unnecessary changes to sections that were already good,
 or the Synthesizer removed content while "polishing."
 
-**Fix — For Fixer:** Add to `prompts/fixer.txt`:
+**Fix - For Fixer:** Add to `prompts/fixer.txt`:
 ```
 Do not change any section that the Critic did not explicitly criticize.
 If a section was not mentioned in the critique, leave it exactly as it was.
 ```
 
-**Fix — For Synthesizer:** Add to `prompts/synthesizer.txt`:
+**Fix - For Synthesizer:** Add to `prompts/synthesizer.txt`:
 ```
 IMPORTANT: Do not remove any content. Do not shorten paragraphs. Do not
 simplify explanations. Your only task is surface-level polish (grammar,
 transitions, formatting). The content has already been validated.
 ```
 
-**Fix — For tracking:** Remember that `best_draft.txt` always holds the
+**Fix - For tracking:** Remember that `best_draft.txt` always holds the
 highest-scored version. If the Synthesizer degrades quality, compare
 `final_output.txt` with `best_draft.txt` and use the latter.
 
@@ -9314,21 +9314,21 @@ as `best_draft.txt`.
 
 **Symptom:** `run.py` exits with an unhandled exception during a pipeline run.
 
-**Fix — Step 1:** Read the full traceback in the terminal output.
+**Fix - Step 1:** Read the full traceback in the terminal output.
 
-**Fix — Step 2:** Check the log:
+**Fix - Step 2:** Check the log:
 ```bash
 tail -20 logs/pipeline.log
 ```
 The last `agent_start` event tells you where it crashed.
 
-**Fix — Step 3:** Check if Ollama is still running:
+**Fix - Step 3:** Check if Ollama is still running:
 ```bash
 curl http://localhost:11434
 ```
 If not: `open -a Ollama`
 
-**Fix — Step 4:** Common crash causes and fixes:
+**Fix - Step 4:** Common crash causes and fixes:
 - `FileNotFoundError: prompts/builder.txt` → create the missing prompt file
 - `KeyError: 'refined_goal'` in graph node → Supervisor node failed silently;
   check `logs/pipeline.log` for the error before this crash
@@ -9431,7 +9431,7 @@ git push origin feature/my-changes
 
 ---
 
-# SECTION 21 — Testing the Whole System
+# SECTION 21 - Testing the Whole System
 
 Run these tests in order. Each one exercises a different part of the pipeline.
 Do not skip a test because you "think it probably works." Verification is the
@@ -9499,7 +9499,7 @@ python run.py \
 **Expected behavior:**
 - Supervisor identifies mode as `planning`.
 - Builder produces a structured plan with weekly phases and specific topics.
-- Output should NOT be a wall of prose — it should use numbered steps, tables,
+- Output should NOT be a wall of prose - it should use numbered steps, tables,
   or a clear week-by-week structure.
 - Critic flags any weeks that are too vague or missing resources.
 
@@ -9746,8 +9746,8 @@ code runs/<bootstrap-timestamp>/final_output.txt \
 | Structure | Are sections clearly delineated and logically ordered? |
 | Accuracy | Are the trade-offs described actually correct? |
 | Usefulness | If you were making a real architectural decision, which output would you actually use? |
-| Critique quality | Compare the two `loop01_critic.txt` files — does the Serious profile critic find more specific issues? |
-| Score progression | Compare `run_summary.json` — what are the score histories? |
+| Critique quality | Compare the two `loop01_critic.txt` files - does the Serious profile critic find more specific issues? |
+| Score progression | Compare `run_summary.json` - what are the score histories? |
 
 **Expected behavior:**
 - Bootstrap: 3B model produces adequate output. Critique is less specific. Scores typically 45–65.
@@ -9769,7 +9769,7 @@ More complex goals show larger quality gaps between profiles.
 
 ---
 
-# SECTION 22 — Git and GitHub Setup
+# SECTION 22 - Git and GitHub Setup
 
 ## 22.1 Check if Git is installed and configured
 
@@ -9819,7 +9819,7 @@ Verify it worked:
 ```bash
 git status
 ```
-You will see a long list of untracked files. That is correct — nothing is committed yet.
+You will see a long list of untracked files. That is correct - nothing is committed yet.
 
 ---
 
@@ -9894,11 +9894,11 @@ Expected: one line showing your commit hash and message.
    - **Repository name:** `multi-modal-workflow`
    - **Description:** `Local-first multi-agent AI orchestration system powered by Ollama. Runs entirely on a MacBook with no paid APIs.`
    - **Visibility:** Public (for portfolio) or Private (for now, make public later).
-   - **Do NOT** check "Add a README file" — you already have one locally.
-   - **Do NOT** add `.gitignore` — you already have one.
-   - **Do NOT** add a license — you can add one later.
+   - **Do NOT** check "Add a README file" - you already have one locally.
+   - **Do NOT** add `.gitignore` - you already have one.
+   - **Do NOT** add a license - you can add one later.
 4. Click **Create repository**.
-5. GitHub shows you a page with setup commands. Copy the URL shown — it looks like:
+5. GitHub shows you a page with setup commands. Copy the URL shown - it looks like:
    `https://github.com/yourusername/multi-modal-workflow.git`
 
 ---
@@ -9930,7 +9930,7 @@ the tracking branch. The `-u` flag means future `git push` commands (no argument
 will push to this same place.
 
 You will be prompted for your GitHub credentials. Use your GitHub username and a
-**Personal Access Token** (PAT) as the password — GitHub no longer accepts your
+**Personal Access Token** (PAT) as the password - GitHub no longer accepts your
 account password for Git operations.
 
 **To create a PAT:**
@@ -9938,7 +9938,7 @@ account password for Git operations.
 2. Click **Generate new token (classic)**.
 3. Set expiration to 90 days or No expiration.
 4. Check scope: `repo` (full control of private repositories).
-5. Click Generate. Copy the token — you cannot see it again.
+5. Click Generate. Copy the token - you cannot see it again.
 6. Use this token as your password when `git push` prompts for credentials.
 
 To avoid entering the token every time, store it in macOS Keychain:
@@ -9955,7 +9955,7 @@ browser. You should see your files listed.
 
 ## 22.7 What to include in commits going forward
 
-Commit frequently — at least after each working phase:
+Commit frequently - at least after each working phase:
 ```bash
 # Good commit cadence examples:
 git commit -m "Add LangGraph pipeline variant"
@@ -9972,13 +9972,13 @@ git push
 
 ---
 
-## 22.8 What NOT to commit — security reminders
+## 22.8 What NOT to commit - security reminders
 
 ⚠️ **Never commit:**
-- `.env` — may contain API keys.
-- `runs/history.db` — contains your personal run data.
+- `.env` - may contain API keys.
+- `runs/history.db` - contains your personal run data.
 - Any file named `*_key*`, `*_secret*`, `*_token*`, `*_password*`.
-- The `.venv/` folder — 50,000+ files that belong to pip, not your project.
+- The `.venv/` folder - 50,000+ files that belong to pip, not your project.
 
 Before every push, run:
 ```bash
@@ -10024,7 +10024,7 @@ In your README, reference it:
 
 ---
 
-# SECTION 23 — Final README Outline
+# SECTION 23 - Final README Outline
 
 Create the README file:
 ```bash
@@ -10047,11 +10047,11 @@ Use this outline and content:
 Single-call AI responses are inconsistent. You send one prompt, get one answer,
 and have no way to know if it is the best possible output or a mediocre first
 draft. Large AI companies solve this with internal feedback loops and verification
-systems — but those are invisible to users and require expensive API calls.
+systems - but those are invisible to users and require expensive API calls.
 
 This project brings that quality loop to your local machine: one goal in,
 multiple rounds of critique and revision, a scored verdict, and a polished
-final output — all running free on your own hardware.
+final output - all running free on your own hardware.
 
 ---
 
@@ -10063,7 +10063,7 @@ final output — all running free on your own hardware.
   it passes a quality threshold (configurable)
 - **Structured JSON scoring**: The Judge returns category scores, pass/fail,
   hard fails, and rationale on every iteration
-- **6 workflow modes**: Writing, Coding, Planning, Debugging, Study, General —
+- **6 workflow modes**: Writing, Coding, Planning, Debugging, Study, General -
   each with adapted prompts and scoring rubrics
 - **Real code verification**: In coding mode, generated Python is executed and
   pytest tests are run; failures are fed back into the loop
@@ -10136,7 +10136,7 @@ User Goal
 
 - Apple Silicon Mac (M1/M2/M3) with 16GB+ unified memory
 - Tested on: MacBook Pro M3, 24GB RAM, macOS 15+
-- No GPU required — Apple Silicon handles inference natively
+- No GPU required - Apple Silicon handles inference natively
 - No internet connection required after models are downloaded
 
 ---
@@ -10149,7 +10149,7 @@ Download from https://ollama.com/download and install the macOS app.
 
 ### 2. Pull the models
 
-> **Verify tags before pulling** — run `ollama search <name>` and use the exact
+> **Verify tags before pulling** - run `ollama search <name>` and use the exact
 > tag shown in the output. Tags in this README were correct at time of writing
 > but may change between Ollama releases.
 
@@ -10206,7 +10206,7 @@ Goal: Explain how Python decorators work with three practical examples.
 [Builder]     Draft v0: 612 chars
 [Critic]      Found 4 issues: missing timing example, no analogy, intro too brief
 [Fixer]       Revision 1: 891 chars
-[Judge]       Score: 74/100 — PASS (threshold: 70)
+[Judge]       Score: 74/100 - PASS (threshold: 70)
 [Synthesizer] Final output: 944 chars
 
 Stop reason : passed (score 74 ≥ threshold 70)
@@ -10256,10 +10256,10 @@ Edit `config/modes.yaml` to adjust per-mode prompts and scoring weights.
 
 - Response quality is bounded by the active model profile (Bootstrap: 3B; Serious Work: 14B)
 - Each pipeline run takes 1–8 minutes depending on model size and loop count
-- Code verification runs generated code locally — review safety notes before
+- Code verification runs generated code locally - review safety notes before
   using on untrusted goals (see `orchestrator/code_runner.py`)
 - The Judge's scoring is model-dependent and may not be perfectly calibrated
-- No multi-user support — designed for single-user local use only
+- No multi-user support - designed for single-user local use only
 
 ---
 
@@ -10286,7 +10286,7 @@ Edit `config/modes.yaml` to adjust per-mode prompts and scoring weights.
 
 ## License
 
-MIT License — see `LICENSE` file.
+MIT License - see `LICENSE` file.
 
 ---
 
@@ -10302,7 +10302,7 @@ git push
 
 ---
 
-# SECTION 24 — Build Timeline
+# SECTION 24 - Build Timeline
 
 This is a realistic 7-day schedule for someone working 2–4 hours per day.
 Each day has a clear goal, concrete tasks, and a "done" definition so you
@@ -10310,14 +10310,14 @@ know when to stop for the day rather than over-engineering.
 
 ---
 
-## Day 1 — Foundations
+## Day 1 - Foundations
 
 **Goal:** Verify all tools work. Pull models. Confirm Python-to-Ollama communication.
 
 **Tasks:**
 1. Run all verification commands from Section 3 and fix any failures.
 2. Start Ollama and confirm it is running (`curl http://localhost:11434`).
-3. Pull the Bootstrap profile model (Section 6.7 — the one-command pull sequence).
+3. Pull the Bootstrap profile model (Section 6.7 - the one-command pull sequence).
 4. Create the full project folder structure (Section 7).
 5. Create the virtual environment and install `requests` and `pyyaml`.
 6. Write and run `test_ollama.py` (Section 8).
@@ -10325,7 +10325,7 @@ know when to stop for the day rather than over-engineering.
 
 **Commands to run by end of Day 1:**
 ```bash
-ollama pull llama3.2:3b            # Bootstrap profile — all 7 roles
+ollama pull llama3.2:3b            # Bootstrap profile - all 7 roles
 python test_ollama.py              # prints a model response
 git log --oneline                  # shows first commit
 ollama list                        # shows llama3.2:3b
@@ -10337,12 +10337,12 @@ Git has one commit. Project folder has all subfolders and placeholder files.
 
 **Backup plan if stuck:**
 If `llama3.2:3b` inference is too slow (>60 s/response), try `llama3.2:1b` for
-Day 1 sanity checks — it's smaller and faster. Restore `3b` on Day 2.
+Day 1 sanity checks - it's smaller and faster. Restore `3b` on Day 2.
 If pip install fails, try Python 3.12 (Section 5.9) before Day 2.
 
 ---
 
-## Day 2 — Two-Agent Loop
+## Day 2 - Two-Agent Loop
 
 **Goal:** Builder → Critic pipeline working. First real agent-to-agent handoff.
 
@@ -10373,7 +10373,7 @@ profile is intentionally fast for exactly this kind of prompt tuning.
 
 ---
 
-## Day 3 — Fixer, Judge, and Reiteration Loop
+## Day 3 - Fixer, Judge, and Reiteration Loop
 
 **Goal:** Full terminal MVP working end-to-end.
 
@@ -10401,12 +10401,12 @@ cat runs/$(ls -t runs/ | head -1)/run_summary.json
 **Backup plan:**
 If the Judge JSON never parses correctly on Bootstrap, add the "first char must be
 {" instruction to `prompts/judge.txt`. If parsing remains flaky, switch to the
-Serious Work profile — `phi4:14b` (Judge) is significantly more reliable for
+Serious Work profile - `phi4:14b` (Judge) is significantly more reliable for
 structured JSON output. Run `--max-loops 1` until parsing is stable, then increase.
 
 ---
 
-## Day 4 — LangGraph + Config System
+## Day 4 - LangGraph + Config System
 
 **Goal:** LangGraph variant working. Config-driven model assignment in place.
 
@@ -10415,7 +10415,7 @@ structured JSON output. Run `--max-loops 1` until parsing is stable, then increa
 2. Write `orchestrator/state.py` and `orchestrator/graph.py` (Section 12.5–12.6).
 3. Write `run_langgraph.py` (Section 12.7).
 4. Run the same goal through both `run.py` and `run_langgraph.py`.
-   Compare the outputs — they should be equivalent.
+   Compare the outputs - they should be equivalent.
 5. Write `orchestrator/adapters.py` and `orchestrator/config_loader.py`
    (Sections 18.3–18.4).
 6. Update `BaseAgent.call_model()` to use the adapter.
@@ -10434,7 +10434,7 @@ models without editing Python files.
 **Day 4 model upgrade checkpoint:**
 Once the LangGraph pipeline passes end-to-end with Bootstrap models, pull the
 Serious Work profile and switch `active_profile: serious`. Rerun the same goal
-and compare output quality — this is the point where the pipeline starts
+and compare output quality - this is the point where the pipeline starts
 producing genuinely useful work.
 
 **Backup plan:**
@@ -10444,7 +10444,7 @@ to the LangGraph variant later. The plain Python version is fully functional.
 
 ---
 
-## Day 5 — SQLite History + Logging + Coding Verification
+## Day 5 - SQLite History + Logging + Coding Verification
 
 **Goal:** Data persistence working. Coding mode verified with real execution.
 
@@ -10471,7 +10471,7 @@ A coding goal produces `loop01_code_run.txt` showing execution results.
 
 ---
 
-## Day 6 — Streamlit Dashboard
+## Day 6 - Streamlit Dashboard
 
 **Goal:** Local web UI running with live output and history panel.
 
@@ -10494,7 +10494,7 @@ shows past runs. README on GitHub shows the architecture diagram and setup steps
 
 ---
 
-## Day 7 — Polish, Tests, and Portfolio Readiness
+## Day 7 - Polish, Tests, and Portfolio Readiness
 
 **Goal:** Everything tested, documented, and professionally presented on GitHub.
 
@@ -10511,8 +10511,8 @@ shows past runs. README on GitHub shows the architecture diagram and setup steps
    ```
 3. Run the full test plan from Section 21.
 4. Fix any remaining failures.
-5. Review every prompt template — improve any that produced weak output.
-6. Review `config/models.yaml` — confirm model assignments are optimal.
+5. Review every prompt template - improve any that produced weak output.
+6. Review `config/models.yaml` - confirm model assignments are optimal.
 7. Run `ruff check .` and fix any lint issues:
    ```bash
    $ ruff check . --fix
@@ -10536,7 +10536,7 @@ shows past runs. README on GitHub shows the architecture diagram and setup steps
 
 ---
 
-# SECTION 25 — Final Checklist
+# SECTION 25 - Final Checklist
 
 Use this checklist to track your progress. Check each box as you complete it.
 Do not move to the next phase until the current phase checklist is complete.
@@ -10561,7 +10561,7 @@ Do not move to the next phase until the current phase checklist is complete.
 
 > **Before any pull:** run `ollama search <model-name>` and confirm the exact tag.
 > Tags in this guide were correct at time of writing but may change between Ollama
-> releases. Use whatever tag `ollama search` shows — not the tag from memory.
+> releases. Use whatever tag `ollama search` shows - not the tag from memory.
 
 - [ ] Ollama app starts without errors (llama icon in menu bar)
 - [ ] `ollama list` runs without errors
@@ -10715,7 +10715,7 @@ You have a complete, portfolio-ready local AI orchestration system when:
 - [ ] You can explain to someone else what each of the 7 agents does and why
   the loop exists.
 
-**Congratulations — you built a serious local AI system from scratch.**
+**Congratulations - you built a serious local AI system from scratch.**
 
 ---
 

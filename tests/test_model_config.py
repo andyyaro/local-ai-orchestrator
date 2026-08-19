@@ -4,7 +4,7 @@ tests/test_model_config.py
 Enforces the Phase 6 memory-discipline rule that a 24GB MacBook cannot
 keep two 14B-class models resident at once: every profile in
 config/models.yaml must reference at most one distinct 14B-class model
-name. This is a real enforcement test, not a descriptive one — it fails
+name. This is a real enforcement test, not a descriptive one - it fails
 the moment a future edit reintroduces a mixed-family profile.
 """
 

@@ -137,7 +137,7 @@ def test_normal_path_runs_planner_and_critic_fixer_loop(tmp_path, monkeypatch):
 
 
 class _FlakyAdapter:
-    """Fails once with a connection error, then succeeds — exercises the
+    """Fails once with a connection error, then succeeds - exercises the
     real BaseAgent.call_model -> call_with_resilience path end to end."""
 
     def __init__(self, outcomes):

@@ -64,7 +64,7 @@ def main():
     run_dir = make_run_dir()
 
     print()
-    print("LOCAL AI ORCHESTRATOR — Phase 3: Builder → Critic → Fixer → Judge")
+    print("LOCAL AI ORCHESTRATOR - Phase 3: Builder → Critic → Fixer → Judge")
     print(f"Run dir   : {run_dir}")
     print(f"Goal      : {goal}")
     print(f"Threshold : {args.threshold}/100")

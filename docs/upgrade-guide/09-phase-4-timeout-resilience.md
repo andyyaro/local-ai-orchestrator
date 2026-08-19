@@ -1,4 +1,4 @@
-# 09 — Phase 4: Timeout and Resilience
+# 09 - Phase 4: Timeout and Resilience
 
 ## Goal
 
@@ -22,7 +22,7 @@ except RuntimeError as e:
 ```
 
 This retries the *identical* call, with a flat 3-second sleep, regardless of
-whether the failure was a dropped connection, a timeout, or an HTTP error —
+whether the failure was a dropped connection, a timeout, or an HTTP error -
 and `orchestrator/adapters.py`'s `OllamaAdapter.call()` collapses all three
 into a generic `RuntimeError`, so `call_model()` cannot even tell them apart.
 On final failure, `_fatal()` calls `sys.exit(1)` directly from inside the
@@ -32,12 +32,11 @@ to save the partial run the way it already does for `KeyboardInterrupt`.
 This matters because a local Ollama timeout is not the same kind of failure
 as a cloud API rate limit, and treating them the same wastes real time on
 your Mac. Do not use blind exponential backoff for local Ollama timeouts.
-Exponential backoff with jitter exists to handle *shared-server contention*
-— many clients hitting one rate-limited endpoint, where waiting longer genuinely
+Exponential backoff with jitter exists to handle *shared-server contention* many clients hitting one rate-limited endpoint, where waiting longer genuinely
 helps the queue drain. A local Ollama call has exactly one client (you) and
 one likely cause: the model is still loading, the machine is under memory
 pressure, or the model is just slow at this prompt length. Retrying the
-identical call after a fixed sleep does not address any of those causes — it
+identical call after a fixed sleep does not address any of those causes - it
 just repeats the same wait. The two failure classes need two different
 responses:
 
@@ -46,7 +45,7 @@ responses:
   fall back to a smaller, faster local model rather than repeating the same
   call.
 - **Cloud/API 429 (rate limited) or 503 (unavailable)** → exponential
-  backoff with jitter is the correct, standard response here — but this repo
+  backoff with jitter is the correct, standard response here - but this repo
   has no working cloud adapter yet (Phase 7), so this phase only needs to
   build the branch for it, not exercise it for real.
 
@@ -109,38 +108,37 @@ resilience:
    creating a circular import, since resilience.py does not need adapters.py):
 
    - `ModelCallError` (base class)
-   - `ModelConnectionError(ModelCallError)` — replaces the
+   - `ModelConnectionError(ModelCallError)` - replaces the
      `requests.exceptions.ConnectionError` branch.
-   - `ModelTimeoutError(ModelCallError)` — replaces the
+   - `ModelTimeoutError(ModelCallError)` - replaces the
      `requests.exceptions.Timeout` branch.
-   - `ModelHTTPError(ModelCallError)` — replaces the
+   - `ModelHTTPError(ModelCallError)` - replaces the
      `requests.exceptions.HTTPError` branch.
 
    Keep the existing, already-good human-readable messages
-   ("Cannot connect to Ollama at...", "Ollama timed out after...") — only the
+   ("Cannot connect to Ollama at...", "Ollama timed out after...") - only the
    exception *type* changes, not the wording.
 
 4. In `orchestrator/resilience.py`, implement the classification and
    decision logic:
 
-   - `classify_failure(exc: Exception) -> str` — returns `"connection"`,
+   - `classify_failure(exc: Exception) -> str` - returns `"connection"`,
      `"timeout"`, `"http"`, or `"unknown"` based on the exception type from
      step 3.
-   - `get_timeout_for_model(model: str) -> int` — maps a model name to a
+   - `get_timeout_for_model(model: str) -> int` - maps a model name to a
      size class (a simple heuristic on the model string, e.g. matching
      `"3b"`/`"1b"` → `small`, `"7b"`/`"8b"`/`"12b"` → `medium`, `"14b"`/`"13b"`
      and above → `large`) and returns the matching value from
      `resilience.timeouts` in config. Document the size-matching heuristic
      clearly since it's a judgment call, and default to `resilience.timeouts.default`
      for anything unmatched.
-   - `call_with_resilience(model: str, prompt: str, temperature: float, num_ctx: int, role: str) -> str`
-     — the new entry point that replaces `BaseAgent.call_model()`'s inner
+   - `call_with_resilience(model: str, prompt: str, temperature: float, num_ctx: int, role: str) -> str` the new entry point that replaces `BaseAgent.call_model()`'s inner
      loop. Behavior:
      - First attempt: call the adapter with `get_timeout_for_model(model)`
        as the effective timeout (adapters.py's `OllamaAdapter` should accept
        a per-call timeout override rather than only using the global
        `request_timeout` from config).
-     - On `ModelConnectionError` (a plausibly transient failure — the
+     - On `ModelConnectionError` (a plausibly transient failure - the
        server hiccuped, not that the model itself is slow): retry once,
        with a short fixed wait (2–3 seconds is fine here, since this really
        is "try again briefly," not "the model is overloaded").
@@ -148,13 +146,13 @@ resilience:
        memory pressure, prompt length, or genuine model slowness): do
        **not** retry the identical call. Instead, fall back once to
        `resilience.fallback_model` and log that a fallback occurred. If the
-       fallback model *also* times out, fail fast — do not chain further
+       fallback model *also* times out, fail fast - do not chain further
        fallbacks.
      - On `ModelHTTPError`: fail fast for 4xx-style client errors (these
        indicate a bad request, not a transient condition); this phase's
        cloud-backoff branch (exponential backoff with jitter, capped at
        `resilience.cloud_backoff.max_retries`) only applies once Phase 7
-       adds a real cloud adapter that can actually return 429/503 — build
+       adds a real cloud adapter that can actually return 429/503 - build
        the branch now, but it will be unreachable via Ollama today, and
        that's fine.
      - Raise a new `FatalModelError(ModelCallError)` if all applicable
@@ -163,22 +161,22 @@ resilience:
 
 5. Update `agents/base_agent.py`'s `call_model()` to call
    `orchestrator.resilience.call_with_resilience()` instead of its current
-   inline retry loop. Remove the `sys.exit(1)` call from `_fatal()` — instead
+   inline retry loop. Remove the `sys.exit(1)` call from `_fatal()` - instead
    let `FatalModelError` propagate up out of the agent call.
 
 6. In `run.py`, wrap the `run_pipeline()` call in `main()` with a second
    `except` clause (alongside the existing `KeyboardInterrupt` handler) that
    catches `FatalModelError`, prints a clear message, and confirms the
    partial run directory (`run_dir`) still has whatever artifacts were saved
-   before the failure — mirroring exactly how `KeyboardInterrupt` is already
+   before the failure - mirroring exactly how `KeyboardInterrupt` is already
    handled, so a model failure and a user-initiated stop behave consistently.
 
-7. Optional, lower priority within this phase — implement only if the above
+7. Optional, lower priority within this phase - implement only if the above
    is solid and tested first: a `--resume <run_dir>` CLI flag that, given a
    `runs/<timestamp>/` directory from a prior failed or interrupted run,
    reloads the last saved draft (`best_draft.txt` or the highest-numbered
    `loopNN_fixer.txt`) and continues the loop from there rather than
-   restarting from the Supervisor. This is explicitly a stretch goal — if you
+   restarting from the Supervisor. This is explicitly a stretch goal - if you
    run out of time in this phase, stop after step 6 and note resume-from-
    artifact as deferred, rather than shipping a half-working `--resume` flag.
 
@@ -199,7 +197,7 @@ Create `tests/test_resilience.py` covering:
   call to the fallback model, not a repeated call to the original model. A
   `ModelTimeoutError` on both the original and fallback model raises
   `FatalModelError` rather than retrying indefinitely.
-- No test should sleep for real multi-second delays — use a short,
+- No test should sleep for real multi-second delays - use a short,
   test-only wait value or mock `time.sleep` so the suite stays fast.
 
 ## Verification
@@ -223,22 +221,22 @@ pytest tests/ -v
   "Ollama"'` or quitting it from the menu bar) shows the pipeline printing a
   clear connection-failure message, attempting exactly one retry, and then
   either succeeding (if you restart Ollama in time) or failing cleanly with
-  the partial run directory intact — not a raw Python traceback and not a
+  the partial run directory intact - not a raw Python traceback and not a
   silent hang.
 
 ## If it fails
 
 - The fallback model also isn't available locally, so the fallback attempt
-  itself raises a connection error: this is expected — `call_with_resilience`
+  itself raises a connection error: this is expected - `call_with_resilience`
   should surface this as `FatalModelError` with a message naming both models
   that failed, not swallow the second failure silently.
 - Existing agent tests break because `call_model()`'s signature or behavior
   changed: check whether any test relied on the old `sys.exit(1)` behavior on
-  failure — update those tests to expect `FatalModelError` instead, since the
+  failure - update those tests to expect `FatalModelError` instead, since the
   hard-exit behavior is exactly what this phase removes.
 - The pipeline seems to hang instead of timing out: confirm
   `get_timeout_for_model()` is actually being passed through to
-  `OllamaAdapter.call()`'s `requests.post(..., timeout=...)` argument — a
+  `OllamaAdapter.call()`'s `requests.post(..., timeout=...)` argument - a
   common mistake is computing the right timeout value but not threading it
   into the actual HTTP call.
 
@@ -320,20 +318,20 @@ Implement the following:
    raises FatalModelError if all retries/fallbacks are exhausted.
 4. Update agents/base_agent.py's call_model() to use
    call_with_resilience() instead of its current inline retry loop with
-   time.sleep(3) and sys.exit(1). Remove the sys.exit(1) call entirely —
+   time.sleep(3) and sys.exit(1). Remove the sys.exit(1) call entirely -
    let FatalModelError propagate.
 5. In run.py's main(), add an except clause for FatalModelError alongside
    the existing KeyboardInterrupt handler, so a model failure prints a
    clear message and preserves the partial run_dir the same way an
    interrupted run already does.
 6. Do NOT implement the optional --resume flag in this phase unless steps
-   1-5 are complete and tested — if you run out of scope, stop and report
+   1-5 are complete and tested - if you run out of scope, stop and report
    --resume as deferred rather than shipping it half-finished.
 
 Create tests/test_resilience.py using a fake adapter (do not call real
 Ollama in tests) covering classify_failure, get_timeout_for_model, and
 call_with_resilience's retry/fallback/fatal-error behavior. Do not use real
-multi-second sleeps in tests — mock time.sleep or use a short test-only
+multi-second sleeps in tests - mock time.sleep or use a short test-only
 wait value.
 
 Do not modify any file outside this scope.

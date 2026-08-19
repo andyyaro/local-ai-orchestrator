@@ -1,11 +1,11 @@
-# 04 — Optional Self-Hosted MacBook Runner (Track B)
+# 04 - Optional Self-Hosted MacBook Runner (Track B)
 
 ## 4.1 What this section covers
 
 This section defines **Track B**: an optional, manually-triggered
 `.github/workflows/macbook-acceptance.yml` that runs on your own MacBook
 instead of a GitHub-hosted server. This is the *design and reference* for
-that workflow, plus the safety rules around it. It is optional — you can
+that workflow, plus the safety rules around it. It is optional - you can
 complete the entire v1.1 roadmap using only Track A (Chunk 2's other file)
 and manual testing. Set this up only when you specifically want automated
 real-hardware acceptance checks.
@@ -16,7 +16,7 @@ A GitHub Actions "runner" is just a background process that listens for jobs
 GitHub assigns to it and executes them. A GitHub-hosted runner is a fresh
 Linux (or macOS/Windows) virtual machine GitHub spins up per job and destroys
 afterward. A **self-hosted runner** is the same idea, except the process runs
-on a machine you control — in this case, your MacBook Pro — and it does not
+on a machine you control - in this case, your MacBook Pro - and it does not
 get destroyed after each job. It has access to whatever is already on that
 machine: your real Ollama installation, your real pulled models, your real
 24GB of unified memory, your real filesystem.
@@ -35,10 +35,10 @@ my Mac" from an automated workflow, rather than from you manually running
   12m49s problem before it becomes a habit.
 - Real memory behavior under your actual profile configuration (Phase 6).
 - That no cloud call happened during a run where cloud fallback should be
-  off by default (Phase 7) — this can only be verified against a real run,
+  off by default (Phase 7) - this can only be verified against a real run,
   not a mock.
 
-## 4.4 Security risks a self-hosted runner introduces — read before setting this up
+## 4.4 Security risks a self-hosted runner introduces - read before setting this up
 
 ⚠️ **This is the single riskiest piece of infrastructure in this whole guide.**
 A self-hosted runner executes whatever code is in the workflow file, on a
@@ -59,7 +59,7 @@ Hard rules for this project:
   approve each external-PR run.
 - **Keep secrets out of logs.** If a cloud API key ever needs to exist on
   your Mac for a manual Phase 7 test, it lives in `.env` (already
-  git-ignored) — never printed in a workflow step, never echoed to stdout.
+  git-ignored) - never printed in a workflow step, never echoed to stdout.
 - **Never let this workflow run destructive commands.** No `rm -rf`, no
   `git clean -xdf`, no writing outside the repo's own `runs/`/`logs/`
   directories.
@@ -77,7 +77,7 @@ behavior, and you want a repeatable, automated way to re-check that on your
 actual Mac before merging.
 
 **Do not use it when:** you just changed a validator's regex, a log message,
-or a docstring — run the specific unit test locally instead; spinning up a
+or a docstring - run the specific unit test locally instead; spinning up a
 full acceptance run for a pure-Python change wastes your own machine's time
 for no new information.
 
@@ -89,7 +89,7 @@ yourself.
 ⚠️ GitHub's exact steps for registering a self-hosted runner (the download
 URL, the registration token, the `config.sh` command) change over time and
 are tied to your specific repository. Do not hardcode a token or URL from
-this guide — go to your repo's **Settings → Actions → Runners → New
+this guide - go to your repo's **Settings → Actions → Runners → New
 self-hosted runner** in GitHub's own UI and follow the current instructions
 shown there for macOS/arm64. Treat any command GitHub gives you there as
 one-time-use; registration tokens expire quickly and are not meant to be
@@ -100,7 +100,7 @@ instructions when you get there):
 
 - Download the macOS arm64 runner package GitHub's UI links to.
 - Extract it into a dedicated folder outside this repo (for example,
-  `~/actions-runner/`) — do not put runner binaries inside
+  `~/actions-runner/`) - do not put runner binaries inside
   `/Users/andyyaro/Downloads/local-ai-orchestrator`.
 - Run the configuration script GitHub's UI shows you, pointing it at this
   repository.
@@ -171,7 +171,7 @@ jobs:
 
 Notes on this design:
 
-- **`on.workflow_dispatch` only** — no `push`, no `pull_request`. This
+- **`on.workflow_dispatch` only** - no `push`, no `pull_request`. This
   workflow only ever runs when you personally click "Run workflow" in
   GitHub's UI (or trigger it via `gh workflow run`), matching the "manual
   trigger only" rule from the master goals.
@@ -182,7 +182,7 @@ Notes on this design:
   model this workflow needs, the job should fail loudly rather than silently
   downloading gigabytes onto your machine.
 - **The final step is a cheap, explicit proof that cloud fallback stayed
-  off** — it greps `config/models.yaml` for `provider: ollama`. Once Phase 7
+  off** - it greps `config/models.yaml` for `provider: ollama`. Once Phase 7
   exists, this step should be extended to also check that the `cloud_calls`
   table (or equivalent log) recorded zero calls for this run.
 - **Runtime threshold check is intentionally left out of this first version.**
@@ -204,7 +204,7 @@ git rm .github/workflows/macbook-acceptance.yml
 git commit -m "chore: disable macbook acceptance workflow"
 ```
 
-⚠️ This is a reversible, low-risk rollback — it only removes the workflow
+⚠️ This is a reversible, low-risk rollback - it only removes the workflow
 definition, not the runner registration itself. To fully remove the runner
 from GitHub, use the same Settings → Actions → Runners page you used to add
 it.
@@ -224,8 +224,7 @@ ollama list
 Expected result: Ollama responds, and the models this workflow references
 (at minimum `llama3.2:3b`) are already present.
 
-If it fails: do not have the workflow install or pull anything automatically
-— start Ollama yourself (`open -a Ollama`) and pull any missing model
+If it fails: do not have the workflow install or pull anything automatically start Ollama yourself (`open -a Ollama`) and pull any missing model
 yourself before triggering the workflow.
 
 Done when:
@@ -233,7 +232,7 @@ Done when:
 ```text
 Ollama is confirmed running, a self-hosted runner is registered against
 this repo (only if you chose to set one up), and macbook-acceptance.yml
-only ever triggers via workflow_dispatch — never on pull_request or push
+only ever triggers via workflow_dispatch - never on pull_request or push
 from branches you don't control.
 ```
 

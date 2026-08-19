@@ -50,7 +50,7 @@ def main():
 
     print()
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║      LOCAL AI ORCHESTRATOR — LANGGRAPH PIPELINE         ║")
+    print("║      LOCAL AI ORCHESTRATOR - LANGGRAPH PIPELINE         ║")
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"  Goal       : {args.goal[:70]}")
     print(f"  Profile    : {active_profile}")

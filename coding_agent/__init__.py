@@ -1,7 +1,7 @@
 """
 coding_agent/
 
-Phase 11 — a small, local coding-agent loop (read repo, propose a
+Phase 11 - a small, local coding-agent loop (read repo, propose a
 constrained patch, run tests, stop when they pass), inspired by publicly
 documented patterns from tools like Claude Code, SWE-agent, Aider, and
 OpenHands.

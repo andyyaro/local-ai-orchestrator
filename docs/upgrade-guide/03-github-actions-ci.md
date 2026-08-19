@@ -1,4 +1,4 @@
-# 03 — GitHub Actions CI Foundation (Track A)
+# 03 - GitHub Actions CI Foundation (Track A)
 
 ## 3.1 What this section covers
 
@@ -11,7 +11,7 @@ understand what Phase 1 is building and why.
 
 ## 3.2 Why GitHub Actions, and why now
 
-Right now there is no `.github/` directory in this repo at all — CI does not
+Right now there is no `.github/` directory in this repo at all - CI does not
 exist yet. Every check (`ruff check .`, `pytest`) only runs when you remember
 to run it by hand. That's fine for a solo v1.0.0 project, but it stops being
 fine the moment Claude Code starts making changes across 13 upgrade phases:
@@ -41,9 +41,9 @@ require a real model call.
 - SQLite behavior (`orchestrator/database.py`), since SQLite needs no
   external service.
 - Validator logic (Phase 2), router logic (Phase 3), and resilience logic
-  (Phase 4), once those modules and their tests exist — all of these are pure
+  (Phase 4), once those modules and their tests exist - all of these are pure
   Python and do not call a real model.
-- Mocked adapter behavior — a fake `ModelAdapter` that returns canned text
+- Mocked adapter behavior - a fake `ModelAdapter` that returns canned text
   instead of calling Ollama, so agent logic can be tested without a live
   model.
 - A Streamlit import/smoke check (`streamlit run --headless` or a plain
@@ -60,13 +60,13 @@ require a real model call.
   by default (Phase 7) and are never enabled in CI.
 
 This is why Track B (the self-hosted MacBook runner, `04-self-hosted-macbook-runner.md`)
-exists separately — it is the only track that can check the things in the
+exists separately - it is the only track that can check the things in the
 second list.
 
 ## 3.4 The `ci.yml` reference design
 
 The workflow below is the target shape for `.github/workflows/ci.yml`. It is
-intentionally minimal at first — it runs whatever tests and lint rules exist
+intentionally minimal at first - it runs whatever tests and lint rules exist
 today, and it automatically picks up new test files as later phases add them,
 without needing to be edited every time.
 
@@ -115,7 +115,7 @@ them without understanding why:
   releases, and pinning to a stable, widely-available version keeps CI from
   breaking for reasons that have nothing to do with your code. If you later
   confirm `3.14` is reliably available on `actions/setup-python`, this can be
-  bumped in its own small commit — not silently changed as a side effect of
+  bumped in its own small commit - not silently changed as a side effect of
   an unrelated phase.
 - **`pip install ruff` is explicit**, because `requirements.txt` does not
   currently list Ruff even though the project uses it (verified: Ruff is not
@@ -124,10 +124,10 @@ them without understanding why:
 - **`pytest tests/ -v`** runs the whole `tests/` directory rather than naming
   individual files. This means every phase's new test file (validators,
   router, resilience, metrics, cloud policy, etc.) is automatically included
-  once it's added — you should not need to edit `ci.yml` again just because
+  once it's added - you should not need to edit `ci.yml` again just because
   Phase 2 added `tests/test_validators.py`.
 - **`on.push.branches: ["**"]`** runs CI on every branch push, not just
-  `main` — this is what gives you a check on each `phase-N-*` branch before
+  `main` - this is what gives you a check on each `phase-N-*` branch before
   you ever open a PR.
 - There is deliberately no `workflow_dispatch`, no self-hosted runner
   reference, and no model download step in this file. Track A never touches
@@ -145,11 +145,11 @@ that when you read Phase 1, none of it is a surprise.
 ## 3.6 Safety notes specific to Track A
 
 - CI must never have write access to `main` beyond what a normal PR merge
-  requires — do not add a `permissions: contents: write` block or any step
+  requires - do not add a `permissions: contents: write` block or any step
   that pushes commits back to the branch.
 - CI must never reference cloud provider secrets. There is nothing in
   `ci.yml` that reads `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or any other
-  secret — if a later phase's test needs to simulate a cloud call, it must
+  secret - if a later phase's test needs to simulate a cloud call, it must
   do so with a mock adapter, never a real credential, even in CI's own
   secrets store.
 - Do not add automatic tagging, release creation, or `gh release` steps to
@@ -174,11 +174,11 @@ python -c "import app.streamlit_app"
 
 Expected result: all three commands succeed locally, exactly mirroring what
 `ci.yml` will run on GitHub. If these don't pass locally, `ci.yml` will fail
-too — fix locally first.
+too - fix locally first.
 
 If it fails: read the specific failing check (Ruff rule name, or pytest test
 name) before changing anything. Do not loosen a Ruff rule or delete a test to
-make this pass — fix the underlying code.
+make this pass - fix the underlying code.
 
 Done when:
 

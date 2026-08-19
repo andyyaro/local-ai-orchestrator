@@ -1,4 +1,4 @@
-# 06 — Phase 1: CI Foundation
+# 06 - Phase 1: CI Foundation
 
 ## Goal
 
@@ -7,13 +7,13 @@ established in `03-github-actions-ci.md`.
 
 ## Why it matters
 
-Right now there is no `.github/` directory — nothing runs automatically when
+Right now there is no `.github/` directory - nothing runs automatically when
 you push a branch. Every phase after this one (validators, routing, timeouts,
 metrics, and beyond) benefits from having a standing, automatic pass/fail
 signal on every push, rather than relying on you remembering to run
 `ruff check .` and `pytest tests/ -v` by hand every time. This is also the
 first piece of infrastructure Claude Code's future phase work gets checked
-against — a red CI run is a fast, unambiguous "something broke," long before
+against - a red CI run is a fast, unambiguous "something broke," long before
 you'd notice it yourself in a manual review.
 
 ## Files likely touched
@@ -113,7 +113,7 @@ git push -u origin phase-1-ci-foundation
 
 ## Tests to add
 
-None new — Phase 1 does not add pipeline logic, it wires up execution of the
+None new - Phase 1 does not add pipeline logic, it wires up execution of the
 tests that already exist (and any future ones).
 
 ## Verification
@@ -140,14 +140,13 @@ git status --short
 
 - Local `ruff check .` fails: read the specific rule violated, fix the
   underlying code (or, if a rule is genuinely inapplicable to this project,
-  add a scoped `per-file-ignore` in `pyproject.toml` with a one-line reason
-  — don't disable Ruff globally).
+  add a scoped `per-file-ignore` in `pyproject.toml` with a one-line reason don't disable Ruff globally).
 - Local `pytest` fails: this means a currently-broken test predates this
-  phase — fix it on this branch before adding CI, since CI would otherwise
+  phase - fix it on this branch before adding CI, since CI would otherwise
   be red from the moment it's created.
 - GitHub Actions run fails but the same commands pass locally: this usually
   means a dependency difference between your Mac and the Linux runner (for
-  example, a package version pinned differently) — check the Actions log's
+  example, a package version pinned differently) - check the Actions log's
   exact error, don't guess.
 - The workflow doesn't appear in the Actions tab at all: confirm the file is
   at exactly `.github/workflows/ci.yml` (not `.github/workflow/` or

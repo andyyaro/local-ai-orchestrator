@@ -1,11 +1,11 @@
-# Phase 4 Maintainer Report — Timeout and Resilience
+# Phase 4 Maintainer Report - Timeout and Resilience
 
 Date: 2026-07-04
 Source guide: `docs/upgrade-guide/09-phase-4-timeout-resilience.md`
 
 ## Phase name
 
-Phase 4 — Timeout and Resilience
+Phase 4 - Timeout and Resilience
 
 ## Branch
 
@@ -32,7 +32,7 @@ tests/test_resilience.py         (new)
 
 ## Commit SHA
 
-`a182b64` — "feat: add failure classification, model fallback, and clean failure
+`a182b64` - "feat: add failure classification, model fallback, and clean failure
 handling" (squashed into main as `6ddcdaf` via PR #6)
 
 ## PR URL
@@ -41,7 +41,7 @@ https://github.com/andyyaro/local-ai-orchestrator/pull/6
 
 ## GitHub Actions result
 
-`lint-and-test` — **pass** (both matrix jobs, ~24-34s each)
+`lint-and-test` - **pass** (both matrix jobs, ~24-34s each)
 
 ## Tests run
 
@@ -53,15 +53,15 @@ pytest tests/ -v
 
 ## Local test result
 
-- `ruff check .` — all checks passed
-- `tests/test_resilience.py` — 14/14 passed: `classify_failure` for all four
+- `ruff check .` - all checks passed
+- `tests/test_resilience.py` - 14/14 passed: `classify_failure` for all four
   exception classes; `get_timeout_for_model` for small/medium/large/default;
   `call_with_resilience` retry-once-on-connection-error,
   fallback-once-on-timeout, fatal-on-exhausted-fallback,
   fatal-on-exhausted-retry, fail-fast-on-HTTP-error, and first-try-success
-  cases — all using a fake adapter, no real Ollama calls, `time.sleep` mocked
+  cases - all using a fake adapter, no real Ollama calls, `time.sleep` mocked
   via an autouse fixture so the suite stays fast
-- Full `tests/` suite — **71/71 passed**
+- Full `tests/` suite - **71/71 passed**
 
 ## Merge result
 
@@ -91,14 +91,14 @@ Branches: `main` only (local and remote), tracking `6ddcdaf`.
   instruction to stop after the core resilience behavior (steps 1-6) is solid
   and tested rather than shipping a half-working resume flag.
 - No live test was performed that actually stops Ollama mid-run (the guide's
-  manual verification step, `osascript -e 'quit app "Ollama"'`) — this would
+  manual verification step, `osascript -e 'quit app "Ollama"'`) - this would
   require Ollama to be running and a real pipeline run in progress, which
   wasn't authorized in this unattended session. The retry/fallback/fatal-error
   logic was validated at the unit level instead, with a fake adapter standing
   in for the real Ollama connection.
 - The cloud-backoff branch (`resilience.cloud_backoff` config, mentioned in
   the guide) has no code path yet that actually exercises exponential backoff
-  with jitter — this is expected and explicitly noted in the guide, since
+  with jitter - this is expected and explicitly noted in the guide, since
   there is no working cloud adapter until Phase 7. The config values exist
   and `ModelHTTPError` fails fast today; wiring real backoff is future work
   for whenever Phase 7 lands a real cloud adapter that returns 429/503.
@@ -116,14 +116,14 @@ Branches: `main` only (local and remote), tracking `6ddcdaf`.
   behavior, this was treated as in-scope simplification rather than a
   regression. Flagging in case an empty-response safety net is wanted later.
 - `agents/base_agent.py`'s `_fatal()` method was deleted entirely (not just
-  had its `sys.exit(1)` call removed) since nothing calls it anymore —
+  had its `sys.exit(1)` call removed) since nothing calls it anymore -
   `call_model()` now delegates fully to `call_with_resilience()`, which raises
   `FatalModelError` directly. Keeping `_fatal()` around unused would have left
   dead code.
 - `run.py`'s new `except FatalModelError` branch uses `sys.exit(1)` (matching
   a failure exit code) rather than `sys.exit(0)` like the `KeyboardInterrupt`
   branch, since a model failure is not a clean stop the way a user-initiated
-  interrupt is — this distinction wasn't explicit in the guide but seemed the
+  interrupt is - this distinction wasn't explicit in the guide but seemed the
   correct default for exit-code semantics in scripts/CI that might check it.
 
 ## Safe to start next phase?

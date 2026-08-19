@@ -390,7 +390,7 @@ def run_pipeline(
         "passed": False,
     }
 
-    header("STEP 1", "SUPERVISOR — Refine goal & choose mode")
+    header("STEP 1", "SUPERVISOR - Refine goal & choose mode")
     supervisor_model = _role_model("supervisor", "general", model_main, model_fast)
     summary["role_models"]["supervisor"] = supervisor_model
     supervisor = SupervisorAgent(model=supervisor_model, metrics=metrics, num_ctx=run_num_ctx)
@@ -447,9 +447,9 @@ def run_pipeline(
         plan = refined_goal
         planner_model = _role_model("planner", mode, model_main, model_fast)
         summary["role_models"]["planner"] = planner_model
-        print("    Planner skipped (fast path) — refined goal used directly as plan")
+        print("    Planner skipped (fast path) - refined goal used directly as plan")
     else:
-        header("STEP 2", "PLANNER — Create execution plan")
+        header("STEP 2", "PLANNER - Create execution plan")
         planner_model = _role_model("planner", mode, model_main, model_fast)
         summary["role_models"]["planner"] = planner_model
         planner = PlannerAgent(model=planner_model, metrics=metrics, num_ctx=run_num_ctx)
@@ -464,7 +464,7 @@ def run_pipeline(
         save(run_dir, "01_planner_plan.txt", plan)
         print(f"    Plan length  : {len(plan)} chars")
 
-    header("STEP 3", "BUILDER — Write first draft")
+    header("STEP 3", "BUILDER - Write first draft")
     builder_model = _role_model("builder", mode, model_main, model_fast)
     summary["role_models"]["builder"] = builder_model
     builder = BuilderAgent(model=builder_model, metrics=metrics, num_ctx=run_num_ctx)
@@ -705,7 +705,7 @@ def run_pipeline(
         else:
             stop_reason = f"max_loops ({effective_max_loops}) reached"
 
-    header("FINAL", "SYNTHESIZER — Polish best draft")
+    header("FINAL", "SYNTHESIZER - Polish best draft")
     synthesizer_model = _role_model("synthesizer", mode, model_main, model_fast)
     summary["role_models"]["synthesizer"] = synthesizer_model
     synthesizer = SynthesizerAgent(model=synthesizer_model, metrics=metrics, num_ctx=run_num_ctx)
@@ -791,7 +791,7 @@ def run_pipeline(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local AI Orchestrator — full terminal pipeline"
+        description="Local AI Orchestrator - full terminal pipeline"
     )
     parser.add_argument("--goal", required=True,
                         help="The goal or task for the pipeline.")
@@ -822,7 +822,7 @@ def main():
 
     print()
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║         LOCAL AI ORCHESTRATOR — TERMINAL MVP            ║")
+    print("║         LOCAL AI ORCHESTRATOR - TERMINAL MVP            ║")
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"  Goal        : {args.goal[:70]}")
     print(f"  Profile     : {active_profile}")

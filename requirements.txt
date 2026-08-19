@@ -2,13 +2,13 @@
 requests>=2.31.0
 pyyaml>=6.0.1
 
-# Phase 9 — local vector similarity extension for retrieval memory.
+# Phase 9 - local vector similarity extension for retrieval memory.
 # Optional at runtime: memory/retriever.py falls back to a pure-Python
 # brute-force cosine similarity scan if this extension fails to load on a
 # given machine (see that module's _try_sqlite_vec_similarity()).
 sqlite-vec>=0.1.0
 
-# Phase 10 — HTML-to-text conversion for deep research's fetcher, so raw
+# Phase 10 - HTML-to-text conversion for deep research's fetcher, so raw
 # HTML/script tags never reach a prompt.
 beautifulsoup4>=4.12.0
 

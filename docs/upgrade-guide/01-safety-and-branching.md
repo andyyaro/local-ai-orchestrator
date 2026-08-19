@@ -1,4 +1,4 @@
-# 01 — Safety Rules and Branch Strategy
+# 01 - Safety Rules and Branch Strategy
 
 ## 1.1 Branch naming
 
@@ -16,7 +16,7 @@ Verify the working tree:
 git status --short
 ```
 
-Expected result: no output (clean working tree). If you see output, stop and decide whether to commit or stash existing changes before continuing — do not start a phase on top of uncommitted work you don't recognize.
+Expected result: no output (clean working tree). If you see output, stop and decide whether to commit or stash existing changes before continuing - do not start a phase on top of uncommitted work you don't recognize.
 
 Create the branch for whichever phase you're starting:
 
@@ -24,7 +24,7 @@ Create the branch for whichever phase you're starting:
 git checkout -b phase-0-repo-audit
 ```
 
-Later phases follow the same pattern: `phase-1-ci-foundation`, `phase-2-validators`, `phase-3-routing`, and so on. This makes `git log --oneline --graph --all` readable later, and makes rollback trivial — you always know exactly which commits belong to which phase.
+Later phases follow the same pattern: `phase-1-ci-foundation`, `phase-2-validators`, `phase-3-routing`, and so on. This makes `git log --oneline --graph --all` readable later, and makes rollback trivial - you always know exactly which commits belong to which phase.
 
 ## 1.2 Never work directly on `main`
 
@@ -40,7 +40,7 @@ Expected result: the name of your phase branch (e.g. `phase-2-validators`), not 
 
 ## 1.3 What "safe" means for this project specifically
 
-Given the risks called out in the master goals — Claude Code editing files, GitHub Actions running automatically, and an optional self-hosted runner with access to your real Mac — "safe" means:
+Given the risks called out in the master goals - Claude Code editing files, GitHub Actions running automatically, and an optional self-hosted runner with access to your real Mac - "safe" means:
 
 - No commit lands on `main` without you reading the diff first.
 - No GitHub Actions workflow can tag a release or push to `main` on its own.
@@ -57,7 +57,7 @@ cat .gitignore
 
 Expected result: `runs/`, `logs/`, `.venv/`, `.env`, and `__pycache__/` (or equivalent patterns) are present.
 
-If it fails: do not proceed with a phase until `.gitignore` is fixed — a missing ignore pattern here is how you'd accidentally commit your local run history or API keys.
+If it fails: do not proceed with a phase until `.gitignore` is fixed - a missing ignore pattern here is how you'd accidentally commit your local run history or API keys.
 
 ## 1.4 Commit discipline
 
@@ -73,7 +73,7 @@ Read the output line by line. If you see a file you don't recognize touching (e.
 
 Because each phase lives on its own branch and has its own commits, rolling back a phase you don't like is one of two operations.
 
-**If you haven't merged yet** — delete the branch:
+**If you haven't merged yet** - delete the branch:
 
 ```bash
 git checkout main
@@ -86,7 +86,7 @@ git branch -D phase-3-routing
 git branch -m phase-3-routing phase-3-routing-abandoned
 ```
 
-**If you already merged into `main`** — revert the merge commit rather than resetting history:
+**If you already merged into `main`** - revert the merge commit rather than resetting history:
 
 ```bash
 git log --oneline -10
@@ -98,7 +98,7 @@ git revert -m 1 <merge-commit-sha>
 
 This creates a new commit that undoes the phase's changes without rewriting history other branches might depend on.
 
-⚠️ Warning: never use `git reset --hard` on `main` after a merge — that rewrites shared history.
+⚠️ Warning: never use `git reset --hard` on `main` after a merge - that rewrites shared history.
 
 Each phase section later in this guide repeats this pattern with phase-specific detail (e.g., "if Phase 4's resilience logic causes more failures than it fixes, revert commit X").
 

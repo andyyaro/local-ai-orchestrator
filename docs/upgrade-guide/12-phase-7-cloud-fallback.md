@@ -1,16 +1,16 @@
-# 12 — Phase 7: Optional Cloud Fallback Scaffolding
+# 12 - Phase 7: Optional Cloud Fallback Scaffolding
 
 ## v2.0 scope reminder
 
 This is the first v2.0 phase. Do not start it until Phases 0–6 are merged and
-stable — cloud fallback adds real risk (secrets, cost, external calls) on top
+stable - cloud fallback adds real risk (secrets, cost, external calls) on top
 of a pipeline that should already be fast, validated, and measured. If you
 haven't finished the v1.1 phases, stop here and go back.
 
 ## Goal
 
-Add the *architecture* for optional cloud fallback — a provider adapter,
-a cloud policy, a cost tracker, and a privacy guard — without ever enabling a
+Add the *architecture* for optional cloud fallback - a provider adapter,
+a cloud policy, a cost tracker, and a privacy guard - without ever enabling a
 real external call by default. This phase is scaffolding, not activation.
 
 ## Why it matters
@@ -19,10 +19,10 @@ real external call by default. This phase is scaffolding, not activation.
 classes, but both are literal placeholders that just `raise
 NotImplementedError`. The project's own README still lists "Add optional
 OpenAI or Anthropic provider support through config" as an unchecked planned
-improvement. This matters because cloud fallback is real leverage — a single
+improvement. This matters because cloud fallback is real leverage - a single
 frontier-model call on a narrow, verifiable step (scoring a draft, polishing
 a final output) can meaningfully raise output quality without needing your
-Mac to somehow become a frontier-model machine — but only if it's built with
+Mac to somehow become a frontier-model machine - but only if it's built with
 real guardrails from day one: off by default, opt-in per run, human-approved
 per call, cost-capped, and scanned for secrets before anything leaves your
 machine. Building the excitement (a working cloud call) before the
@@ -32,8 +32,8 @@ this phase does.
 The cloud fallback research report (`docs/research/compass_artifact_wf-f11fd32d-aa8a-4145-ba84-db3f3fd5d412_text_markdown.md`)
 frames this correctly: fallback should be an **off-by-default, per-role,
 per-trigger, human-gated escalation layer** that sends the smallest possible
-sanitized payload for a single step — not the whole task, not the whole
-repo — to one frontier model. Model names, pricing, and provider specifics
+sanitized payload for a single step - not the whole task, not the whole
+repo - to one frontier model. Model names, pricing, and provider specifics
 in that report should be re-verified against the provider's current
 published pricing before you rely on any cost estimate in production;
 treat the numbers in this phase's config as a starting point you confirm,
@@ -66,7 +66,7 @@ docs/research/compass_artifact_wf-f11fd32d-aa8a-4145-ba84-db3f3fd5d412_text_mark
 ```
 
 Streamlit display of cloud status/approval/cost is deferred to Phase 8
-(`13-phase-8-streamlit-updates.md`, planned) — this phase only needs the
+(`13-phase-8-streamlit-updates.md`, planned) - this phase only needs the
 policy, tracking, and privacy logic to exist and be correct, not to have a
 UI. Note this overlap so you don't expect a UI change here.
 
@@ -81,7 +81,7 @@ git checkout -b phase-7-cloud-fallback
 ```
 
 2. Add a `cloud` section to `config/models.yaml`. `enabled: false` is the
-   only value that matters on first read — everything else is inert until
+   only value that matters on first read - everything else is inert until
    that's flipped, and even then, per-call approval (step 5) still gates
    every individual request:
 
@@ -104,46 +104,43 @@ cloud:
 ```
 
    ⚠️ `send_full_project_state` must default to `false` and this phase must
-   never implement a path that ignores it — the whole point of the privacy
+   never implement a path that ignores it - the whole point of the privacy
    guard (step 4) is that only a minimal, role-specific payload is built,
    never the full repo or `.env` contents.
 
 3. Create `orchestrator/cloud_policy.py`:
 
-   - `is_cloud_enabled() -> bool` — reads `cloud.enabled` from config.
+   - `is_cloud_enabled() -> bool` - reads `cloud.enabled` from config.
      Returns `False` immediately if `provider: ollama` is still set at the
      top level, as a second independent check (defense in depth: two config
      flags both have to agree before any cloud path is even considered).
-   - `is_role_allowed(role: str) -> bool` — checks `role` against
+   - `is_role_allowed(role: str) -> bool` - checks `role` against
      `cloud.allowed_roles`. Only `judge` and `synthesizer` are allowed by
      default; any other role must be explicitly added to config by you,
      never silently expanded by code.
-   - `should_attempt_cloud(role: str) -> bool` — combines the two checks
+   - `should_attempt_cloud(role: str) -> bool` - combines the two checks
      above. This is the single function every call site should check before
      doing anything else cloud-related.
-   - `request_human_approval(role: str, payload_preview: str, estimated_cost_usd: float) -> bool`
-     — prints the exact payload that would be sent (in full, not truncated
+   - `request_human_approval(role: str, payload_preview: str, estimated_cost_usd: float) -> bool` prints the exact payload that would be sent (in full, not truncated
      in a way that could hide something) and the estimated cost, then reads
      a `y`/`n` confirmation from the terminal. Return `False` on anything
      other than an explicit `y`. This function must never be called from a
-     non-interactive context (CI, an automated script) — document that
+     non-interactive context (CI, an automated script) - document that
      constraint directly in the docstring.
 
 4. Create `orchestrator/privacy_guard.py`:
 
-   - `scan_for_secrets(text: str) -> list[str]` — regex-based scan for
+   - `scan_for_secrets(text: str) -> list[str]` - regex-based scan for
      obvious secret patterns (API key-shaped strings, `sk-...`,
      `ANTHROPIC_API_KEY=`, AWS-style keys, bearer tokens, anything matching
      a pattern in the existing `.env` file's key names). Return a list of
      findings (empty if clean).
-   - `build_minimal_payload(role: str, goal: str, draft: str, extra: dict | None = None) -> str`
-     — constructs *only* what that specific role needs. For `judge`: the
+   - `build_minimal_payload(role: str, goal: str, draft: str, extra: dict | None = None) -> str` constructs *only* what that specific role needs. For `judge`: the
      goal, the draft being scored, and the scoring rubric text already used
-     locally — nothing else. For `synthesizer`: the goal and the best draft
-     — nothing else. Never include file paths, `.env` contents, other
+     locally - nothing else. For `synthesizer`: the goal and the best draft nothing else. Never include file paths, `.env` contents, other
      agents' raw intermediate output beyond what's relevant, or run history
      from other runs.
-   - `guard_payload(role: str, payload: str) -> str` — calls
+   - `guard_payload(role: str, payload: str) -> str` - calls
      `scan_for_secrets()` on the built payload and raises a clear
      `PrivacyGuardError` if anything is found, rather than silently
      redacting and sending a possibly-still-sensitive payload. Fail closed,
@@ -151,21 +148,20 @@ cloud:
 
 5. Create `orchestrator/cost_tracker.py`:
 
-   - `estimate_cost(input_tokens: int, output_tokens: int) -> float` — uses
+   - `estimate_cost(input_tokens: int, output_tokens: int) -> float` - uses
      `cloud.pricing` from config. Document that this is an estimate, not
      exact, since real tokenization differs slightly from any local
      approximation you use to count tokens.
    - `get_spend(period: str) -> float` (`period` is `"daily"` or
-     `"monthly"`) — sums `cost_usd` from the new `cloud_calls` table for the
+     `"monthly"`) - sums `cost_usd` from the new `cloud_calls` table for the
      relevant window.
-   - `check_budget(estimated_cost_usd: float) -> bool` — returns `False` if
+   - `check_budget(estimated_cost_usd: float) -> bool` - returns `False` if
      adding this call would exceed `per_run_usd`, `daily_usd`, or
      `monthly_usd`, and `cloud.budget.block_over_budget` is `true`. This is
-     the function that actually blocks an over-budget call — it must be
+     the function that actually blocks an over-budget call - it must be
      checked *before* `request_human_approval()`, so you're never even asked
      to approve a call that's already over budget.
-   - `record_call(run_id, role, model, input_tokens, output_tokens, cost_usd, approved: bool)`
-     — writes a row to the new `cloud_calls` table.
+   - `record_call(run_id, role, model, input_tokens, output_tokens, cost_usd, approved: bool)` writes a row to the new `cloud_calls` table.
 
 6. Add a `cloud_calls` table to `orchestrator/database.py`'s `SCHEMA`,
    following the existing `runs`/`iterations` table style:
@@ -186,13 +182,13 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
 ```
 
 7. ⚠️ **Before implementing a real adapter, verify the model ID and pricing
-   directly against the provider's own official documentation** —
+   directly against the provider's own official documentation** -
    `config/models.yaml`'s `cloud.model: "claude-sonnet-5"` and the
    `cloud.pricing` block in step 2 above are drawn from the research report
    at `docs/research/compass_artifact_wf-f11fd32d-...md`, and that report's
    own text already flags that its model names and prices should be
    re-verified, not trusted as fact. A model ID or price that's wrong isn't
-   a cosmetic bug here — it's either a broken API call or an incorrect cost
+   a cosmetic bug here - it's either a broken API call or an incorrect cost
    estimate feeding directly into `cost_tracker.py`'s budget enforcement. Do
    not copy the model ID or pricing numbers from this guide, this research
    report, or any other secondhand source into real code without checking
@@ -209,17 +205,17 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
    `orchestrator/adapters.py` for real, but only ever invoked after steps
    3–6 have already passed (policy allowed, privacy guard passed, budget
    check passed, human approved). Read the API key from `.env` (already
-   git-ignored) via the existing project convention — never hardcode it,
+   git-ignored) via the existing project convention - never hardcode it,
    never log it, never include it in any payload preview. Also add a
    `MockCloudAdapter` (in `adapters.py` or a test-only module) that returns
-   a canned, deterministic response with no network call at all — this is
+   a canned, deterministic response with no network call at all - this is
    what every test and CI use, never the real adapter.
 
 8. Wire an optional escalation call site into `run.py`. Keep this narrow: a
    new `--allow-cloud` CLI flag (default off) is required *in addition to*
    `cloud.enabled: true` in config *in addition to* passing
    `should_attempt_cloud()` *in addition to* the budget check *in addition
-   to* interactive approval — all five conditions must hold before a real
+   to* interactive approval - all five conditions must hold before a real
    cloud call happens for a given role's step. If any one is missing, the
    pipeline proceeds using only the local model result, exactly as it does
    today.
@@ -241,7 +237,7 @@ CREATE TABLE IF NOT EXISTS cloud_calls (
   elsewhere in the run's context, proving the minimal-payload construction
   actually excludes it rather than merely not mentioning it explicitly;
   `guard_payload()` raises `PrivacyGuardError` when a finding is present.
-- All three test files must use `MockCloudAdapter` or no adapter at all —
+- All three test files must use `MockCloudAdapter` or no adapter at all -
   never a real network call, never a real API key, even one from a test
   fixture `.env`.
 
@@ -271,13 +267,13 @@ pytest tests/ -v
 
 ## If it fails
 
-- A test accidentally makes a real network call: stop immediately — this
+- A test accidentally makes a real network call: stop immediately - this
   means a test is using `AnthropicAdapter` directly instead of
   `MockCloudAdapter`. Fix the test before doing anything else; a test suite
   that can make real billed API calls is not safe to run in CI or by anyone
   else who clones this repo.
 - `check_budget()` allows a call that should have been blocked: check the
-  daily/monthly SQLite sum query — a common bug is querying across all
+  daily/monthly SQLite sum query - a common bug is querying across all
   timestamps instead of filtering to the current day/month window.
 - The privacy guard misses an obvious secret: add that exact string as a new
   regression test case in `test_privacy_guard.py` before adjusting the
@@ -288,7 +284,7 @@ pytest tests/ -v
 Since `cloud.enabled: false` is the default and every real call requires
 five independent conditions to hold, the safest rollback if anything about
 this phase feels wrong is simply confirming `cloud.enabled: false` and
-never passing `--allow-cloud` — the scaffolding can sit unused indefinitely
+never passing `--allow-cloud` - the scaffolding can sit unused indefinitely
 without risk. To fully remove it:
 
 ```bash

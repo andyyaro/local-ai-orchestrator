@@ -1,10 +1,10 @@
-# 14 — Phase 9: Retrieval and Long-Context-Equivalent Memory
+# 14 - Phase 9: Retrieval and Long-Context-Equivalent Memory
 
 ## Goal
 
 Give the pipeline access to relevant context from prior runs and project
-files through retrieval — local embeddings plus hybrid keyword/vector
-search — instead of pretending the system can hold a huge context window.
+files through retrieval - local embeddings plus hybrid keyword/vector
+search - instead of pretending the system can hold a huge context window.
 
 ## Why it matters
 
@@ -13,7 +13,7 @@ Both research reports agree on this point with hard numbers: a genuine
 for long-context attention scales with sequence length, and even at
 aggressive 2-bit quantization, published research (KVQuant, NeurIPS 2024)
 states that serving a 7B model at a 1M-token context requires **64GB just
-for the KV cache** — on a single datacenter GPU, before you even count model
+for the KV cache** - on a single datacenter GPU, before you even count model
 weights. Ollama's usable GPU memory on a 24GB Mac is roughly 16GB total,
 already spoken for by whatever model is loaded. A 1M-token KV cache cannot
 fit under any configuration this project could reasonably use.
@@ -21,7 +21,7 @@ fit under any configuration this project could reasonably use.
 This matters because the honest, achievable substitute is retrieval: keep
 run history and project files indexed with local embeddings in SQLite, and
 inject only the handful of chunks that are actually relevant to the current
-goal — typically 5–10 chunks of a few hundred tokens each, not the entire
+goal - typically 5–10 chunks of a few hundred tokens each, not the entire
 history. This is not a downgrade dressed up as a feature; it's the correct
 engineering response to a real hardware ceiling, and it keeps the project's
 SQLite-first design intact rather than bolting on a separate vector
@@ -31,10 +31,10 @@ database.
 
 ```text
 memory/                        (new top-level package)
-memory/embeddings.py           (new — local embedding calls via Ollama)
-memory/chunking.py             (new — text chunking)
-memory/indexer.py              (new — indexes runs and project files)
-memory/retriever.py            (new — hybrid FTS5 + vector search)
+memory/embeddings.py           (new - local embedding calls via Ollama)
+memory/chunking.py             (new - text chunking)
+memory/indexer.py              (new - indexes runs and project files)
+memory/retriever.py            (new - hybrid FTS5 + vector search)
 orchestrator/database.py       (add memory_chunks table and FTS5 index)
 config/models.yaml              (add a "memory" section, opt-in)
 requirements.txt                (add sqlite-vec)
@@ -61,7 +61,7 @@ git checkout -b phase-9-retrieval-memory
 ```
 
 2. Add a `memory` section to `config/models.yaml`, opt-in and off by
-   default — retrieval changes what context the model sees, and that should
+   default - retrieval changes what context the model sees, and that should
    never happen silently:
 
 ```yaml
@@ -73,7 +73,7 @@ memory:
 ```
 
 3. Add `sqlite-vec` to `requirements.txt`. This is a loadable SQLite
-   extension with Python bindings — it is not automatically available just
+   extension with Python bindings - it is not automatically available just
    because SQLite ships with Python, so it must be installed explicitly.
    Design `memory/store.py` (or the relevant part of
    `orchestrator/database.py`) to **fail gracefully** if the extension can't
@@ -81,21 +81,21 @@ memory:
    load it, and if that raises, fall back to a pure-Python brute-force
    cosine similarity over stored embeddings instead of crashing. At the
    scale of one person's run history and project files (thousands, not
-   millions, of chunks) brute-force search is genuinely fast enough — don't
+   millions, of chunks) brute-force search is genuinely fast enough - don't
    treat the fallback as a lesser-quality hack, it's a legitimate design
    choice at this scale.
 
 4. Create `memory/embeddings.py`:
 
-   - `embed(text: str, model: str | None = None) -> list[float]` — calls
+   - `embed(text: str, model: str | None = None) -> list[float]` - calls
      Ollama's dedicated embeddings endpoint (`/api/embeddings`, distinct
      from the `/api/generate` endpoint `OllamaAdapter` already uses) with
      the configured `embedding_model`. This needs its own small HTTP call
-     using `get_ollama_base_url()` from `orchestrator/config_loader.py` —
+     using `get_ollama_base_url()` from `orchestrator/config_loader.py` -
      it does not fit `ModelAdapter`'s `call()` interface, since it returns a
      vector, not text, so don't force it into that abstraction.
    - Raise a clear error (not a silent empty vector) if the embedding model
-     isn't pulled locally — mirroring the "never auto-download" rule: the
+     isn't pulled locally - mirroring the "never auto-download" rule: the
      error message should say exactly what to run
      (`ollama pull nomic-embed-text`), and the guide's install steps should
      tell you to run that yourself before using retrieval, never have code
@@ -103,7 +103,7 @@ memory:
 
 5. Create `memory/chunking.py`:
 
-   - `chunk_text(text: str, chunk_size_tokens: int = 512) -> list[str]` — a
+   - `chunk_text(text: str, chunk_size_tokens: int = 512) -> list[str]` - a
      simple, documented chunker (splitting on paragraph boundaries, then
      merging small paragraphs up to the target size) approximating "tokens"
      by word count. Document that this is an approximation, not real
@@ -127,43 +127,43 @@ USING fts5(chunk_text, content='memory_chunks', content_rowid='id');
 ```
 
    Store embeddings as packed floats (Python's `struct` module,
-   `struct.pack(f"{len(vec)}f", *vec)`) in the `embedding` BLOB column —
+   `struct.pack(f"{len(vec)}f", *vec)`) in the `embedding` BLOB column -
    this keeps the database a single file with no external vector store
    dependency, consistent with the project's existing SQLite-only design.
 
 7. Create `memory/indexer.py`:
 
-   - `index_run(run_id: int)` — loads the run's `final_output` (already in
+   - `index_run(run_id: int)` - loads the run's `final_output` (already in
      the `runs` table from `orchestrator/database.py`), chunks it, embeds
      each chunk, and inserts rows into `memory_chunks` with
      `source_type="run"` and `source_ref=str(run_id)`.
-   - `index_project_file(path: str)` — same, for a project file (for
+   - `index_project_file(path: str)` - same, for a project file (for
      example, indexing `README.md` or files under `docs/`) with
      `source_type="project_file"`.
-   - `summarize_run(run_id: int) -> str` — a short, model-generated summary
+   - `summarize_run(run_id: int) -> str` - a short, model-generated summary
      of a past run's goal and outcome (this is the one place in this phase
-     that does call a local model — a cheap one, like the `fast` profile's
-     role model — since summarization is a real generation task, not a
+     that does call a local model - a cheap one, like the `fast` profile's
+     role model - since summarization is a real generation task, not a
      deterministic operation). Store the summary alongside the run so old
      runs can be represented compactly ("reflection memory") instead of
      re-indexing their full transcripts.
 
 8. Create `memory/retriever.py`:
 
-   - `keyword_search(query: str, k: int) -> list[dict]` — BM25-ranked
+   - `keyword_search(query: str, k: int) -> list[dict]` - BM25-ranked
      search via the `memory_chunks_fts` virtual table.
-   - `vector_search(query: str, k: int) -> list[dict]` — embeds the query
+   - `vector_search(query: str, k: int) -> list[dict]` - embeds the query
      with `embed()` and ranks stored chunks by cosine similarity (via
      sqlite-vec if it loaded, or the brute-force fallback otherwise).
-   - `hybrid_search(query: str, k: int) -> list[dict]` — combines both
+   - `hybrid_search(query: str, k: int) -> list[dict]` - combines both
      result sets (a simple, documented approach like reciprocal rank fusion
-     or a normalized weighted sum is enough — don't over-engineer the
+     or a normalized weighted sum is enough - don't over-engineer the
      re-ranking) and returns the top `k` merged results.
-   - `retrieve_context(goal: str, k: int | None = None) -> str` — the single
+   - `retrieve_context(goal: str, k: int | None = None) -> str` - the single
      entry point the pipeline calls: runs `hybrid_search`, formats the top
      chunks into a clearly-labeled context block (e.g. `"RELEVANT CONTEXT
      FROM PRIOR RUNS:\n..."`), and returns it as a string ready to prepend
-     to a prompt. Keep injected context to the configured `top_k` chunks —
+     to a prompt. Keep injected context to the configured `top_k` chunks -
      never "just add everything that matched," since that reintroduces the
      unbounded-context problem this phase exists to avoid.
 
@@ -181,7 +181,7 @@ Create `tests/test_memory.py` covering:
   number of chunks near the target size, and handles a string shorter than
   one chunk without erroring.
 - `keyword_search` and `vector_search` each return the expected top result
-  for a small, hand-constructed set of indexed chunks — use a fake,
+  for a small, hand-constructed set of indexed chunks - use a fake,
   deterministic embedding function in tests (for example, a hash-based
   vector) rather than calling the real `nomic-embed-text` model, so the
   test suite never needs Ollama running.
@@ -219,22 +219,22 @@ pytest tests/ -v
 ## If it fails
 
 - `sqlite-vec` fails to load on your machine: confirm the fallback path
-  actually engages rather than crashing — this is exactly the scenario step
+  actually engages rather than crashing - this is exactly the scenario step
   3 designs for; if it crashes instead of falling back, that's the bug to
   fix, not a reason to require the extension.
 - Retrieval returns irrelevant chunks: check `hybrid_search`'s merge
-  weighting — a common issue is one signal (usually keyword search)
+  weighting - a common issue is one signal (usually keyword search)
   dominating because its scores aren't normalized to the same scale as the
   vector similarity scores before combining.
 - The embedding call fails with a connection error: confirm
   `nomic-embed-text` is actually pulled (`ollama list`) before assuming the
-  code is broken — this phase never pulls it for you.
+  code is broken - this phase never pulls it for you.
 
 ## Rollback plan
 
 Retrieval is entirely opt-in via `memory.retrieval_enabled`. If it produces
 worse results than no retrieval at all, the immediate fix is setting that
-flag back to `false` — no code change required. To remove the phase
+flag back to `false` - no code change required. To remove the phase
 entirely:
 
 ```bash

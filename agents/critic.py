@@ -2,7 +2,7 @@
 agents/critic.py
 
 The Critic agent reviews a draft against the original goal and produces
-structured, actionable feedback. It does not rewrite — only critiques.
+structured, actionable feedback. It does not rewrite - only critiques.
 """
 
 from agents.base_agent import BaseAgent

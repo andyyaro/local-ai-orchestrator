@@ -1,4 +1,4 @@
-# 08 — Phase 3: Routing, Speed, and Pipeline Collapse
+# 08 - Phase 3: Routing, Speed, and Pipeline Collapse
 
 ## Goal
 
@@ -13,21 +13,21 @@ repo inspection and by both research reports: too many sequential model calls
 per run, and swapping between different 14B-class models mid-run. A single
 run with `max_loops = N` makes `3 + 4N` sequential model calls today
 (Supervisor, Planner, Builder, then Critic+Fixer+Judge per loop, plus
-Synthesizer). At `N = 4` that's 19 blocking calls — for a task that may not
+Synthesizer). At `N = 4` that's 19 blocking calls - for a task that may not
 have needed a full plan-critique-fix-judge cycle at all.
 
 This matters because a simple task ("summarize this in 100 words") does not
 need the same pipeline depth as a complex one ("write a Python module with
 tests and handle five edge cases"). Forcing every task through the full
 7-agent loop is the single biggest reason normal runs feel slow. This phase
-does not touch *which* models are used (that's Phase 6's job) — it touches
+does not touch *which* models are used (that's Phase 6's job) - it touches
 *how many agent calls happen* and *how many loop iterations run*, based on
 how complex the task actually is.
 
 Model-swap elimination (avoiding alternating between `qwen2.5:14b`,
 `qwen2.5-coder:14b`, and `phi4:14b` within one run) is a related but separate
 problem, owned by Phase 6 (`11-phase-6-memory-discipline.md`, planned). This
-phase only reduces *call count and loop count* — note the overlap so you
+phase only reduces *call count and loop count* - note the overlap so you
 don't expect this phase alone to fully fix the 12m49s runtime; it fixes the
 "too many calls" half, Phase 6 fixes the "swapping too many different models"
 half.
@@ -69,7 +69,7 @@ git checkout -b phase-3-routing
 
 2. Add a `paths` section to `config/models.yaml`, alongside the existing
    `profiles` section. This defines what each path actually changes about
-   pipeline shape — not which models are used, just how much of the
+   pipeline shape - not which models are used, just how much of the
    pipeline runs:
 
 ```yaml
@@ -96,13 +96,13 @@ paths:
    caching pattern already used for `load_models_config()`.
 
 3. Create `orchestrator/router.py` with a single, deterministic
-   classification function — no model call, just heuristics on the goal
+   classification function - no model call, just heuristics on the goal
    text and mode:
 
    - `classify_path(goal: str, mode: str, override: str | None = None) -> str`
      Returns `"fast"`, `"normal"`, or `"deep"`. If `override` is given (from
      a new `--path` CLI flag), return it directly without running any
-     heuristic — this is what lets you force a path for testing or for a
+     heuristic - this is what lets you force a path for testing or for a
      task you already know is simple or complex. Otherwise:
      - Short goals (for example, under ~25 words) with no complexity
        signal → `"fast"`.
@@ -127,24 +127,24 @@ paths:
      method next to the existing `run_start`/`agent_start` methods).
    - If `skip_planner` is true for the selected path, skip the Planner step
      entirely and pass the refined goal directly to the Builder as the plan
-     (do not call the Planner agent at all — this is a real call
+     (do not call the Planner agent at all - this is a real call
      elimination, not a shortcut plan string).
    - If `skip_critic_fixer_loop` is true, run the Builder's draft straight to
      a single Judge call (no Critic, no Fixer) and treat that as the only
-     iteration — still apply Phase 2's validators and, in coding mode, code
+     iteration - still apply Phase 2's validators and, in coding mode, code
      verification, before the Judge call, exactly as the full pipeline does.
    - Use the path's `max_loops` and `threshold` as the effective values
      unless the caller explicitly passed `--max-loops` / `--threshold` on
-     the command line — CLI flags you type yourself should still win over
+     the command line - CLI flags you type yourself should still win over
      the path's defaults, since you may be intentionally overriding for a
      specific run.
 
-5. Mirror the same path-based branching in `orchestrator/graph.py` — this
+5. Mirror the same path-based branching in `orchestrator/graph.py` - this
    means adding conditional edges so `node_supervisor` can route directly to
    `node_builder` (skipping `node_planner`) and so `node_builder` can route
    directly to `node_synthesizer` (skipping the Critic/Fixer/Judge loop
    entirely) when the fast path applies. This is a real structural change to
-   the graph, not just a state flag — take care that `build_graph()`'s
+   the graph, not just a state flag - take care that `build_graph()`'s
    conditional edges correctly express "fast path skips planner" and "fast
    path does a single judge check with no loop," matching what `run.py` does.
 
@@ -185,7 +185,7 @@ pytest tests/ -v
 - `tests/test_router.py` passes.
 - The full `tests/` suite still passes.
 - A manual fast-path run completes with visibly fewer steps printed to the
-  terminal (no `STEP 2 — PLANNER`, no `LOOP 1/1 — CRITIC → FIXER`), and
+  terminal (no `STEP 2 - PLANNER`, no `LOOP 1/1 - CRITIC → FIXER`), and
   `run_summary.json` records `"path": "fast"`.
 - A manual deep-path run still behaves exactly like a full v1.0.0 run today.
 
@@ -193,10 +193,10 @@ pytest tests/ -v
 
 - `classify_path` misclassifies a goal you actually tried: add that exact
   goal string as a new test case first, then adjust the keyword list or
-  length threshold — don't tune the heuristic by trial and error without a
+  length threshold - don't tune the heuristic by trial and error without a
   pinned regression test.
 - The fast path skips the Planner but the Builder agent errors because it
-  expected a real plan string: check `agents/builder.py`'s prompt template —
+  expected a real plan string: check `agents/builder.py`'s prompt template -
   it likely assumes a plan was generated; passing the refined goal directly
   as the "plan" needs to actually make sense to the Builder's prompt, so
   read `prompts/builder.txt` before assuming this wiring is a one-line
@@ -224,7 +224,7 @@ git branch -D phase-3-routing
 ```
 
 You can also disable routing without a full revert by defaulting `--path` to
-`"deep"` in `run.py` and leaving the router code in place but unused — this
+`"deep"` in `run.py` and leaving the router code in place but unused - this
 is a safe interim step if you want to keep investigating the classifier
 without reverting the whole phase.
 
@@ -283,7 +283,7 @@ Implement the following:
 5. Explicit CLI --max-loops/--threshold flags must still override the
    path's defaults when the user passes them.
 
-Do not change which models are used per role — that is a separate phase.
+Do not change which models are used per role - that is a separate phase.
 Do not modify any file outside this scope.
 Do not enable cloud calls or change the active provider.
 Do not run `ollama pull` or download any model.

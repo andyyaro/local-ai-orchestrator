@@ -95,7 +95,7 @@ def node_planner(state: PipelineState) -> dict:
 
 
 def node_builder(state: PipelineState) -> dict:
-    # Fast path skips node_planner entirely, so no "plan" key is set yet —
+    # Fast path skips node_planner entirely, so no "plan" key is set yet -
     # fall back to the refined goal, matching run.py's fast-path wiring.
     plan = state.get("plan") or state["refined_goal"]
     agent = BuilderAgent(model=_role_model(state, "builder"), num_ctx=_num_ctx())
@@ -155,7 +155,7 @@ def node_judge(state: PipelineState) -> dict:
     threshold = state.get("threshold", 70)
     mode = state.get("mode", "general")
 
-    # Fast path skips node_critic/node_fixer, so no "revised" key is set yet —
+    # Fast path skips node_critic/node_fixer, so no "revised" key is set yet -
     # fall back to the builder's draft, matching run.py's fast-path wiring.
     revised = state.get("revised") or state["draft"]
 

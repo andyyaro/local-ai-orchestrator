@@ -28,7 +28,7 @@ from eval.scenarios import ALL_SCENARIOS  # noqa: E402
 def main() -> int:
     results = []
     print("=" * 78)
-    print("LOCAL AI ORCHESTRATOR — PHASE 12 EVAL SUITE")
+    print("LOCAL AI ORCHESTRATOR - PHASE 12 EVAL SUITE")
     print("=" * 78)
 
     for scenario_fn in ALL_SCENARIOS:

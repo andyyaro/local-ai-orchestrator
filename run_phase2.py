@@ -20,7 +20,7 @@ from agents.critic import CriticAgent
 
 
 DEFAULT_MODEL_FAST = "llama3.2:3b"
-DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap default — upgrade via config/models.yaml
+DEFAULT_MODEL_MAIN = "llama3.2:3b"   # Bootstrap default - upgrade via config/models.yaml
 RUNS_DIR = Path("runs")
 
 
@@ -69,7 +69,7 @@ def main():
     run_dir = make_run_dir()
 
     print()
-    print("LOCAL AI ORCHESTRATOR — Phase 2: Builder → Critic")
+    print("LOCAL AI ORCHESTRATOR - Phase 2: Builder → Critic")
     print(f"Run directory : {run_dir}")
     print(f"Goal          : {goal}")
     print(f"Builder model : {args.model_main}")

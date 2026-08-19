@@ -11,7 +11,7 @@ treats different failure classes differently:
 
 - Connection error (plausibly transient, e.g. a dropped socket): retry once
   after a short fixed wait.
-- Timeout (the model itself is too slow): don't retry the identical call —
+- Timeout (the model itself is too slow): don't retry the identical call -
   fall back once to a smaller, faster local model instead.
 - HTTP error (a bad request, not a transient condition): fail fast. The
   cloud-backoff branch exists for Phase 7's future cloud adapter, which can
@@ -26,7 +26,7 @@ from orchestrator.config_loader import get_resilience_config
 _LOCAL_RETRY_WAIT_SECONDS = 2.5
 
 # Size-class heuristic for get_timeout_for_model(): substring-match the model
-# name against markers for each class. Order matters — check largest first,
+# name against markers for each class. Order matters - check largest first,
 # since "14b" and "4b" style collisions don't occur in practice for the model
 # names this repo actually uses, but checking large-to-small is the safer
 # default if that ever changes.
@@ -89,7 +89,7 @@ def call_with_resilience(model: str, prompt: str, temperature: float,
     """
     Call `model` through the active adapter with failure-aware handling:
       - ModelConnectionError: retry once, after a short fixed wait.
-      - ModelTimeoutError: do not retry the same model — fall back once to
+      - ModelTimeoutError: do not retry the same model - fall back once to
         resilience.fallback_model instead.
       - ModelHTTPError: fail fast (not transient; a cloud-backoff branch is
         reserved for Phase 7's cloud adapter but unreachable via Ollama).

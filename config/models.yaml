@@ -15,7 +15,7 @@ active_profile: serious
 
 # See docs/model-profiles.md for the memory-budget rationale behind these
 # assignments. Every profile below must reference at most one distinct
-# 14B-class model family (tests/test_model_config.py enforces this) — a
+# 14B-class model family (tests/test_model_config.py enforces this) - a
 # 24GB MacBook cannot keep two 14B-class models resident at once, so mixing
 # them within a profile causes Ollama to repeatedly swap models to disk.
 profiles:
@@ -67,7 +67,7 @@ profiles:
 # Known limitation (see docs/model-profiles.md): these overrides apply
 # regardless of active_profile. If active_profile is "serious" and a goal
 # is classified mode="coding", builder/fixer switch to qwen2.5-coder:14b
-# while judge/synthesizer stay on serious's qwen2.5:14b — reintroducing two
+# while judge/synthesizer stay on serious's qwen2.5:14b - reintroducing two
 # resident 14B-class families for that run. Fixing this fully would mean
 # threading mode into profile selection, which is out of this phase's scope.
 mode_overrides:
@@ -113,7 +113,7 @@ context_sizes:
 
 memory:
   keep_alive: "5m"
-  # Phase 9 — retrieval, opt-in and off by default. Retrieval changes what
+  # Phase 9 - retrieval, opt-in and off by default. Retrieval changes what
   # context the model sees, so it must never activate silently. Requires
   # `ollama pull nomic-embed-text` locally before enabling -- this project
   # never pulls a model automatically.
@@ -135,7 +135,7 @@ resilience:
     max_seconds: 30
     max_retries: 4
 
-# Phase 7 — optional cloud fallback scaffolding. `enabled: false` is the
+# Phase 7 - optional cloud fallback scaffolding. `enabled: false` is the
 # only value that matters on first read: everything else here is inert
 # until that's flipped, and even then a real call also requires the
 # --allow-cloud CLI flag, an allow-listed role, a passing budget check,
@@ -161,7 +161,7 @@ cloud:
     input_per_million_usd: 2.00
     output_per_million_usd: 10.00
 
-# Phase 10 — deep research and internet connection, opt-in and off by
+# Phase 10 - deep research and internet connection, opt-in and off by
 # default. Internet access must never happen just because this code
 # exists: a real search/fetch requires BOTH internet_enabled: true here
 # AND the --enable-research CLI flag (research/run_research.py). Even

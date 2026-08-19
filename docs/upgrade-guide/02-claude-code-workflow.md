@@ -1,8 +1,8 @@
-# 02 — How to Use Claude Code for This Upgrade
+# 02 - How to Use Claude Code for This Upgrade
 
 ## 2.1 Starting a session
 
-Open a terminal at the repo root before starting Claude Code — this ensures Claude Code's working directory and tool calls are scoped to the project, not your home folder.
+Open a terminal at the repo root before starting Claude Code - this ensures Claude Code's working directory and tool calls are scoped to the project, not your home folder.
 
 Go to the repo root:
 
@@ -10,7 +10,7 @@ Go to the repo root:
 cd /Users/andyyaro/Downloads/local-ai-orchestrator
 ```
 
-Then start Claude Code from that directory. If you're already inside a Claude Code session reading this guide, you're already positioned correctly — just confirm:
+Then start Claude Code from that directory. If you're already inside a Claude Code session reading this guide, you're already positioned correctly - just confirm:
 
 ```bash
 pwd
@@ -33,7 +33,7 @@ config/modes.yaml
 
 Each phase section later in this guide lists the *additional* files specific to that phase (for example, the validators phase adds `agents/judge.py` and `prompts/judge.txt` to this list).
 
-The point of inspecting first is that this repo has **two parallel pipeline implementations** — the plain `run.py` version and the LangGraph version in `orchestrator/graph.py` — and a change made to one without the other will silently leave the second one behind. Always ask Claude Code to check whether a change needs to be mirrored in both.
+The point of inspecting first is that this repo has **two parallel pipeline implementations** - the plain `run.py` version and the LangGraph version in `orchestrator/graph.py` - and a change made to one without the other will silently leave the second one behind. Always ask Claude Code to check whether a change needs to be mirrored in both.
 
 ## 2.3 Rules to state at the start of every phase session
 
@@ -41,11 +41,11 @@ Paste these constraints at the start of every Claude Code phase prompt, every ti
 
 - Implement only the named phase. Do not start the next phase without being asked.
 - Do not modify files outside the phase's stated scope.
-- Do not skip or delete failing tests to make the suite pass — fix the underlying code, or stop and report the failure.
+- Do not skip or delete failing tests to make the suite pass - fix the underlying code, or stop and report the failure.
 - Do not run `git merge`, `git push`, or open a pull request unless explicitly instructed in that session.
 - Do not create or push git tags, and do not reference a release version bump.
 - Do not change `provider: ollama` to `openai` or `anthropic` in `config/models.yaml`, and do not add real API calls to a cloud provider.
-- Do not run `ollama pull` or otherwise trigger a model download — if a phase needs a model that isn't present, report that and ask first.
+- Do not run `ollama pull` or otherwise trigger a model download - if a phase needs a model that isn't present, report that and ask first.
 - Show `git status --short` before making any edits, and again after finishing.
 
 ## 2.4 Reusable phase prompt template
@@ -101,7 +101,7 @@ git diff
 
 Look specifically for: files touched that weren't in the phase's stated scope, any new network call (`requests.`, `urllib.`, `socket.`) outside `orchestrator/adapters.py`'s existing Ollama call, any change to `config/models.yaml`'s `provider:` field, and any new `.env` key.
 
-If it fails: if you see any of these and didn't expect them, ask Claude Code to explain the change before proceeding — don't just accept it because tests passed.
+If it fails: if you see any of these and didn't expect them, ask Claude Code to explain the change before proceeding - don't just accept it because tests passed.
 
 ## 2.6 Using Claude Code to fix CI failures
 
@@ -112,7 +112,7 @@ The GitHub Actions run for branch [branch-name] failed. Here is the failure log:
 [paste the relevant failing job output]
 
 Fix only the failing test or lint issue. Do not modify unrelated files.
-Do not weaken the test to make it pass — fix the underlying code, unless the
+Do not weaken the test to make it pass - fix the underlying code, unless the
 test itself is provably wrong, in which case explain why before changing it.
 Run the same check locally (ruff check . / pytest [path] -v) before reporting done.
 Show git status --short after.
@@ -140,7 +140,7 @@ git status --short
 
 Expected result: you are at the repo root, on the correct phase branch, with a clean or intentionally-scoped working tree before Claude Code starts editing.
 
-If it fails: fix your working directory or branch before handing Claude Code a phase prompt — don't let it start work from the wrong location or the wrong branch.
+If it fails: fix your working directory or branch before handing Claude Code a phase prompt - don't let it start work from the wrong location or the wrong branch.
 
 Done when:
 

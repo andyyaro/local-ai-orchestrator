@@ -52,7 +52,7 @@ def main():
             return
 
         print(f"\n{'=' * 60}")
-        print(f"  Run #{run['id']} — {run['timestamp']}")
+        print(f"  Run #{run['id']} - {run['timestamp']}")
         print(f"{'=' * 60}")
         print(f"  Goal         : {run['goal']}")
         print(f"  Refined goal : {run['refined_goal']}")

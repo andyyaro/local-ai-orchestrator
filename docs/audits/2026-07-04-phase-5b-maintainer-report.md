@@ -1,4 +1,4 @@
-# Phase 5b Maintainer Report — Wire Real Resilience Events into Metrics
+# Phase 5b Maintainer Report - Wire Real Resilience Events into Metrics
 
 ## Gap being closed
 
@@ -13,7 +13,7 @@ that nothing ever passed. `agents/base_agent.py`'s `call_model()` called
 `RunMetrics` instance. As a result, `run_summary.json`'s
 `metrics.retries`, `metrics.fallbacks`, and `metrics.timeout_events` were
 always `0` on real runs, even when retries/fallbacks/timeouts genuinely
-occurred — the counting logic itself (`RunMetrics.record_retry` etc.) was
+occurred - the counting logic itself (`RunMetrics.record_retry` etc.) was
 correct and unit-tested, but nothing ever called it outside of tests.
 
 ## Fix
@@ -23,7 +23,7 @@ correct and unit-tested, but nothing ever called it outside of tests.
    passes `metrics=self.metrics` into `call_with_resilience()` instead of
    omitting the argument (which silently defaulted to `None`).
 2. `run.py`: every agent constructed in `run_pipeline()` now receives
-   `metrics=metrics` — the same `RunMetrics(run_dir.name)` instance already
+   `metrics=metrics` - the same `RunMetrics(run_dir.name)` instance already
    used for `record_agent_call`, `record_path`,
    `record_validator_failure`, and `record_hard_fail`. No new instance is
    created; this is the same object that gets `finalize()`d into
@@ -35,18 +35,18 @@ needed to change.
 
 ## Files changed
 
-- `agents/base_agent.py` — accept and forward `metrics`.
-- `run.py` — pass `metrics=metrics` when constructing each of the 7 agents.
-- `tests/test_base_agent.py` (new) — proves `call_model()` threads
+- `agents/base_agent.py` - accept and forward `metrics`.
+- `run.py` - pass `metrics=metrics` when constructing each of the 7 agents.
+- `tests/test_base_agent.py` (new) - proves `call_model()` threads
   `self.metrics` into `call_with_resilience()`, and that it defaults to
   `None` (not a crash) when no metrics object was supplied.
-- `tests/test_resilience.py` — added 4 tests using a real `RunMetrics`
+- `tests/test_resilience.py` - added 4 tests using a real `RunMetrics`
   instance (not a stub) to prove `call_with_resilience()`'s existing
   `record_retry` / `record_fallback` / `record_timeout_event` calls
   actually increment the counters that land in `finalize()`'s output, for
   the connection-retry, timeout-fallback, and timeout-with-failed-fallback
   cases, plus a `metrics=None` no-op case.
-- `tests/test_pipeline_routing.py` — added one end-to-end regression test,
+- `tests/test_pipeline_routing.py` - added one end-to-end regression test,
   `test_pipeline_records_real_resilience_events_in_run_summary`, that
   leaves `BuilderAgent.run()` un-mocked (unlike the existing routing
   tests) so its `call_model()` call really goes through
@@ -71,7 +71,7 @@ pytest tests/ -v                    → 86 passed
 Before this fix, `test_pipeline_records_real_resilience_events_in_run_summary`
 (run against the pre-fix code, manually, during investigation) failed with
 `summary["metrics"]["retries"] == 0` despite the fake adapter raising a
-`ModelConnectionError` on the first call — confirming the reported gap was
+`ModelConnectionError` on the first call - confirming the reported gap was
 real and reproducible, not just a documentation note. After wiring
 `metrics` through `BaseAgent` and `run.py`, the same test passes with
 `retries == 1`.
