@@ -22,7 +22,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff
+          # Pinned deliberately. `pip install ruff` adopts whatever shipped that
+          # morning, so a linter release can fail a build with no code change -
+          # which is exactly what happened: this pipeline was green in July and
+          # went red on a docs-only commit because ruff 0.16 enables rules that
+          # 0.6 did not have (83 findings, 0 of them new code). Upgrading the pin
+          # and working through those findings is its own task.
+          pip install "ruff==0.6.9"
 
       - name: Run Ruff
         run: ruff check .
