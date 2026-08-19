@@ -46,44 +46,40 @@ and a polished final output — all running locally through Ollama.
 
 ## Architecture
 
-```text
-User Goal
-    │
-    ▼
-┌─────────────┐
-│ Supervisor  │  Refines goal and chooses workflow mode
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Planner    │  Creates a structured execution plan
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Builder    │  Produces the first complete draft
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────────────────────┐
-│              Improvement Loop               │
-│                                             │
-│  ┌─────────┐   ┌────────┐   ┌──────────┐   │
-│  │ Critic  │ → │ Fixer  │ → │ Verify*  │   │
-│  └─────────┘   └────────┘   └────┬─────┘   │
-│                                  │         │
-│                              ┌───▼───┐     │
-│                              │ Judge │     │
-│                              └───┬───┘     │
-│                                  │         │
-│      repeat if score is below threshold     │
-└─────────────────────────────────────────────┘
-       │
-       ▼
-┌─────────────┐
-│ Synthesizer │  Polishes the best-scoring draft
-└─────────────┘
+```mermaid
+flowchart TD
+    G([User goal]) --> R{{Router<br/><i>deterministic, no model call</i>}}
+    R -->|fast / normal / deep| S[Supervisor<br/><small>refines goal, picks mode</small>]
+    S --> P[Planner<br/><small>structured execution plan</small>]
+    P --> B[Builder<br/><small>first complete draft</small>]
+
+    subgraph LOOP [Improvement loop]
+        direction LR
+        C[Critic] --> F[Fixer] --> V["Verify*<br/><small>sandboxed exec + pytest</small>"] --> J[Judge]
+    end
+
+    B --> C
+    J -->|score below threshold| C
+
+    J --> VAL{{"Validators<br/><i>deterministic</i>"}}
+    VAL -->|"constraint violated →<br/>pass=False, score=0"| C
+    VAL -->|all constraints met| SY[Synthesizer<br/><small>polishes the best draft</small>]
+    SY --> VAL2{{Validators}}
+    VAL2 -->|"synthesis broke a constraint<br/>the draft satisfied"| FB[Fall back to pre-synthesis draft]
+    VAL2 -->|ok| OUT([Output])
+    FB --> OUT
+
+    style VAL fill:#fde68a,stroke:#b45309,color:#000
+    style VAL2 fill:#fde68a,stroke:#b45309,color:#000
+    style R fill:#bfdbfe,stroke:#1d4ed8,color:#000
 ```
+
+The two amber nodes are the part that matters. Constraints are extracted from the user's
+**original** goal rather than the Supervisor's refined paraphrase, and
+`apply_validator_results_to_verdict()` forces `pass=False` and `total_score=0` on any violation
+regardless of what the Judge scored. A model cannot mark its own homework. The second check
+exists because synthesis can break a constraint the draft already satisfied, in which case the
+pre-synthesis draft wins.
 
 `Verify` runs only in coding mode. It extracts Python code, executes it safely,
 runs pytest when tests exist, and feeds failures back into the next revision loop.
