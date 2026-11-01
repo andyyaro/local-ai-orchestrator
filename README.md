@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/brand/lockup/lockup-color.svg" alt="local-ai-orchestrator" width="284">
+</p>
+
 # Local AI Orchestrator
 
 > A local-first, free-to-run multi-agent AI pipeline that improves outputs
