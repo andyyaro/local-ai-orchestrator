@@ -1,0 +1,48 @@
+<template>
+  <style>
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    #root { position: absolute; inset: 0; }
+    /* the end card, Outbreak's way: logo, one line, the URL */
+    #s8-tile { position: absolute; left: 532px; top: 360px; width: 160px; height: 160px; overflow: visible; }
+    #s8-word { position: absolute; left: 732px; top: 402px; width: 654.9px; height: 76px; display: block; }
+    #s8-line { position: absolute; left: 0; top: 580px; width: 1920px; text-align: center; font-weight: 600; font-size: 44px; line-height: 54px; letter-spacing: -0.014em; color: var(--label); white-space: nowrap; }
+    #s8-url { position: absolute; left: 0; top: 662px; width: 1920px; text-align: center; font-weight: 600; font-size: 38px; line-height: 48px; letter-spacing: -0.01em; color: var(--accent); white-space: nowrap; }
+  </style>
+  <div id="root" data-composition-id="s8-end" data-width="1920" data-height="1080">
+    <svg id="s8-tile" viewBox="0 0 120 120" aria-label="local-ai-orchestrator icon">
+      <rect width="120" height="120" rx="26.4" fill="#1E2A1A" />
+      <g transform="translate(60 60) scale(0.68) translate(-60 -60)">
+        <circle cx="60" cy="68" r="40" fill="#C5D86D" />
+        <path d="M60 68 L 84.25 54.00" fill="none" stroke="#1E2A1A" stroke-width="9" stroke-linecap="round" />
+        <circle cx="14.97" cy="42.00" r="5.5" fill="#C5D86D" fill-opacity="0.451" />
+        <circle cx="60.00" cy="16.00" r="5.5" fill="#C5D86D" fill-opacity="0.451" />
+        <circle cx="105.03" cy="42.00" r="7" fill="#F1EEDC" />
+      </g>
+    </svg>
+    <img id="s8-word" src="assets/brand/wordmark-forest.svg" alt="local-ai-orchestrator" />
+    <div id="s8-line">Private multi-agent runs on your Mac.</div>
+    <div id="s8-url">github.com/andyyaro/local-ai-orchestrator</div>
+  </div>
+  <script>
+    (function () {
+      const { WA, EO } = window.FILM;
+      const TM = window.TM;
+      const S0 = TM.s8[0];
+      const W = (k, w, nth) => WA(k, w, nth) - S0;
+      const tl = gsap.timeline({ paused: true });
+      const rise = (el, t, d = 0.6, dy = 18) =>
+        tl.fromTo(el, { opacity: 0, y: dy, filter: "blur(5px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: d, ease: EO, immediateRender: false }, t - 0.04);
+
+      gsap.set(["#s8-tile", "#s8-word", "#s8-line", "#s8-url"], { opacity: 0 });
+      // the lockup lands with the end card's first stab (the sound stage's pop at 63.78)
+      tl.fromTo("#s8-tile", { opacity: 0, scale: 0.88, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.7, ease: EO, immediateRender: false }, 0.25);
+      tl.fromTo("#s8-word", { opacity: 0, x: -16, clipPath: "inset(0% 100% 0% 0%)" }, { opacity: 1, x: 0, clipPath: "inset(0% 0% 0% 0%)", duration: 1.0, ease: EO, immediateRender: false }, W("v13", "local"));
+      // "Private multi-agent runs on your Mac." (the dashboard's own subtitle), then the address
+      rise("#s8-line", W("v13", "private"));
+      rise("#s8-url", W("v13", "runs"), 0.6, 14);
+      window.__timelines["s8-end"] = tl;
+    })();
+  </script>
+</template>

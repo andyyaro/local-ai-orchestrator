@@ -1,0 +1,7 @@
+[
+  {
+    "rule": "word_limit",
+    "passed": false,
+    "detail": "word count 216 is outside the 5-word tolerance for exact target 50"
+  }
+]

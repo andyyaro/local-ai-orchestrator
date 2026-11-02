@@ -1,0 +1,398 @@
+{
+ "take": "dash-run",
+ "fps": 30,
+ "viewport": [
+  1280,
+  720
+ ],
+ "size": [
+  2560,
+  1440
+ ],
+ "shots": {
+  "goal": {
+   "start": 19.4,
+   "dur": 8.8333,
+   "src": "assets/shots/goal.mp4",
+   "speed": [
+    {
+     "t0": 22.95,
+     "t1": 28.235,
+     "factor": 21.7,
+     "real_s": 82.1,
+     "pointer_1x_s": 1.5,
+     "label": "22\u00d7 speed"
+    }
+   ],
+   "cuts": [],
+   "marks": {
+    "task_click": 20.233,
+    "type_start": 20.433,
+    "keys": [
+     20.433,
+     20.467,
+     20.533,
+     20.533,
+     20.567,
+     20.633,
+     20.667,
+     20.733,
+     20.733,
+     20.767,
+     20.833,
+     20.867,
+     20.933,
+     20.933,
+     20.967,
+     21.033,
+     21.067,
+     21.133,
+     21.133,
+     21.167,
+     21.233,
+     21.267,
+     21.333,
+     21.333,
+     21.367,
+     21.433,
+     21.467,
+     21.533,
+     21.533,
+     21.567,
+     21.633,
+     21.667,
+     21.733,
+     21.733,
+     21.767,
+     21.833,
+     21.867,
+     21.933,
+     21.933,
+     21.967,
+     22.033,
+     22.067,
+     22.133,
+     22.133,
+     22.167
+    ],
+    "type_end": 22.233,
+    "run_press": 22.933,
+    "progress_shown": 23.167,
+    "progress_view": 24.467,
+    "row_done": 25.7
+   },
+   "rects": {},
+   "events": [
+    [
+     23.067,
+     "supervisor:run"
+    ],
+    [
+     25.7,
+     "builder:run, supervisor:done"
+    ]
+   ],
+   "notes": "1x until Run pipeline is pressed (22.95); then the run at 21.8x (labelled) through s3 and s4: the supervisor ticks at 25.70, the builder at 28.67. The window can step left for the fast/normal/deep note from 'fast' (25.20) while the take plays on."
+  },
+  "judge": {
+   "start": 28.2333,
+   "dur": 10.6,
+   "src": "assets/shots/judge.mp4",
+   "speed": [
+    {
+     "t0": 28.235,
+     "t1": 30.419,
+     "factor": 21.82,
+     "real_s": 47.0,
+     "pointer_1x_s": 0.03,
+     "label": "22\u00d7 speed"
+    }
+   ],
+   "cuts": [],
+   "marks": {
+    "follow_scroll": [
+     28.7,
+     29.033,
+     29.4,
+     29.733,
+     30.067
+    ],
+    "judge1_open": 31.167,
+    "score_view": 34.767,
+    "row_done": [
+     28.7,
+     30.133
+    ]
+   },
+   "rects": {
+    "judge1_open_text": {
+     "frame": 581,
+     "rect": [
+      787.0,
+      591.5,
+      188.1,
+      21
+     ],
+     "t": 31.6
+    },
+    "judge1_open_row": {
+     "frame": 581,
+     "rect": [
+      280.5,
+      490.9,
+      720,
+      244.6
+     ],
+     "t": 31.6
+    },
+    "score_heading": {
+     "frame": 627,
+     "rect": [
+      280.5,
+      530.6,
+      121.8,
+      21
+     ],
+     "t": 34.7
+    },
+    "score_current": {
+     "frame": 627,
+     "rect": [
+      280.5,
+      566.8,
+      133.3,
+      105
+     ],
+     "t": 34.7
+    },
+    "score_status": {
+     "frame": 627,
+     "rect": [
+      429.8,
+      566.8,
+      133.3,
+      105
+     ],
+     "t": 34.7
+    }
+   },
+   "events": [
+    [
+     28.7,
+     "judge:run, builder:done, loops=1"
+    ],
+    [
+     30.133,
+     "critic:run, judge:done, loops=2, score=True"
+    ]
+   ],
+   "notes": "judge row clicked at 31.12, verdict open 31.79-33.33 (push-in on the verdict, rects.judge1_open_text); Score progression in view from 34.76."
+  },
+  "repair": {
+   "start": 38.8333,
+   "dur": 12.3333,
+   "src": "assets/shots/repair.mp4",
+   "speed": [
+    {
+     "t0": 38.823,
+     "t1": 40.728,
+     "factor": 114.4,
+     "real_s": 214.5,
+     "pointer_1x_s": 0.03,
+     "label": "114\u00d7 speed"
+    }
+   ],
+   "cuts": [
+    {
+     "t": 45.0,
+     "from_frame": 1308,
+     "to_frame": 2104
+    },
+    {
+     "t": 47.633,
+     "from_frame": 2148,
+     "to_frame": 2154
+    }
+   ],
+   "marks": {
+    "claim_open": 41.433,
+    "run_end": 45.0,
+    "summary_view": 46.4,
+    "validators_view": 47.633,
+    "row_done": [
+     39.333,
+     40.2,
+     40.6
+    ]
+   },
+   "rects": {
+    "claim_open_text": {
+     "frame": 1308,
+     "rect": [
+      298.5,
+      399.8,
+      669.4,
+      46.6
+     ],
+     "t": 42.733
+    },
+    "claim_open_row": {
+     "frame": 1308,
+     "rect": [
+      280.5,
+      -436.6,
+      720,
+      903.6
+     ],
+     "t": 42.733
+    },
+    "final_score": {
+     "frame": 2146,
+     "rect": [
+      280.5,
+      584.6,
+      168,
+      105
+     ],
+     "t": 46.3
+    },
+    "result": {
+     "frame": 2146,
+     "rect": [
+      464.5,
+      584.6,
+      168,
+      105
+     ],
+     "t": 46.3
+    },
+    "loops": {
+     "frame": 2146,
+     "rect": [
+      648.5,
+      584.6,
+      168,
+      105
+     ],
+     "t": 46.3
+    },
+    "mode": {
+     "frame": 2146,
+     "rect": [
+      832.5,
+      584.6,
+      168,
+      105
+     ],
+     "t": 46.3
+    },
+    "vf_heading": {
+     "frame": 2156,
+     "rect": [
+      280.5,
+      63.8,
+      116.6,
+      21
+     ],
+     "t": 47.633
+    },
+    "vf_caption": {
+     "frame": 2156,
+     "rect": [
+      280.5,
+      100.0,
+      720,
+      22.4
+     ],
+     "t": 47.633
+    },
+    "vf_table": {
+     "frame": 2156,
+     "rect": [
+      280.5,
+      138.3,
+      722,
+      74
+     ],
+     "t": 47.633
+    },
+    "claim_meets": {
+     "frame": 1308,
+     "rect": [
+      655,
+      423,
+      302,
+      24
+     ],
+     "text": "meets the 50-word tolerance for exact target word count.",
+     "how": "measured on take frame 1308 (2x pixels / 2)",
+     "t": 42.733
+    }
+   },
+   "events": [
+    [
+     39.333,
+     "fixer:run, critic:done"
+    ],
+    [
+     40.2,
+     "judge:run, fixer:done"
+    ],
+    [
+     40.6,
+     "judge:done"
+    ],
+    [
+     40.733,
+     "critic:run, loops=3"
+    ]
+   ],
+   "notes": "loop 2 at 115x; the pointer opens the claim row (fixer0) at 41.43, the claim in view 42.79-45.00 (push-in on rects.claim_open_text); CUT at 45.000 past loop 3 to the finished run; Run summary lands on 'failed' 46.40 (rects.final_score, rects.result); CUT at 47.647 to Validator failures (rects.vf_caption, rects.vf_table): the scroll in between is never shown, so the 'Run saved to:' caption (the scratch path) stays out of frame."
+  },
+  "local": {
+   "start": 51.1667,
+   "dur": 7.0667,
+   "src": "assets/shots/local.mp4",
+   "speed": [],
+   "cuts": [],
+   "marks": {
+    "metrics_open": 52.033,
+    "metrics_view": 54.133
+   },
+   "rects": {
+    "runtime": {
+     "frame": 2249,
+     "rect": [
+      298.5,
+      69.9,
+      684,
+      22.4
+     ],
+     "t": 54.033
+    },
+    "role_table": {
+     "frame": 2249,
+     "rect": [
+      298.5,
+      108.3,
+      686,
+      249
+     ],
+     "t": 54.033
+    },
+    "calls_table": {
+     "frame": 2249,
+     "rect": [
+      298.5,
+      419.3,
+      686,
+      74
+     ],
+     "t": 54.033
+    }
+   },
+   "events": [],
+   "notes": "Metrics summary opened 52.03; the per-role table and Total runtime in view from 54.13 (rects.role_table, rects.runtime)."
+  }
+ }
+}

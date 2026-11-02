@@ -1,0 +1,17 @@
+{
+  "scores": {
+    "completeness": 22,
+    "accuracy": 20,
+    "clarity": 24,
+    "usefulness": 18
+  },
+  "total_score": 0,
+  "pass": false,
+  "hard_fails": [
+    "constraint_violation"
+  ],
+  "rationale": "The draft provides a comprehensive summary of the importance of sleep, covering its impact on physical and mental health, cognitive function, emotional regulation, and overall well-being. While minor adjustments could improve clarity in some sections, the content is generally accurate and well-structured, making it immediately useful for the target audience.\n\nDeterministic constraint check failed before Judge pass/fail was accepted: word count 216 is outside the 5-word tolerance for exact target 50",
+  "validator_failures": [
+    "word_limit"
+  ]
+}

@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Orchestrator: launch film</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/vo.js"></script>
+    <script src="assets/timing.js"></script>
+    <script src="assets/edit.js"></script>
+    <script src="assets/cues.js"></script>
+    <style>
+      /* Type: Inter and Inter Display (SIL OFL 1.1, assets/fonts/OFL-Inter.txt), the Outbreak films' stand-in for SF Pro.
+         HIG Native names the system face; SF cannot be loaded here (local("SF Pro") / local(".SF NS") report status
+         "error" in headless Chromium, as the CERFODES render's "Fonts failed: HostUI" warnings show), so it is not used.
+         No fixed-width face anywhere (Andy's rule): code words are set in Inter. */
+      @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-display: block; }
+      @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+      @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+      @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Bold.woff2") format("woff2"); font-weight: 700; font-display: block; }
+      @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+      @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-Bold.woff2") format("woff2"); font-weight: 700; font-display: block; }
+
+      /* HIG Native light tokens, as the CERFODES film applied them; one accent: the dashboard's own green */
+      :root {
+        --ground: #f2f2f7;            /* grouped-background-primary */
+        --group: #ffffff;             /* background-primary: groups and notes */
+        --label: #000000;             /* label-primary */
+        --label-2: #68686d;           /* label-secondary, solid for video (>= 4.5:1) */
+        --separator: rgba(0, 0, 0, 0.12);
+        --fill-2: rgba(120, 120, 128, 0.16);
+        --fill-3: rgba(118, 118, 128, 0.12);
+        --fill-4: rgba(116, 116, 128, 0.08);
+        --red: #ff383c;               /* system-red: dots and 28 px+ Semibold words only */
+        --green: #34c759;             /* system-green: the hook's false pass only */
+        --accent: #1f7a4d;            /* the dashboard's Run pipeline green: kickers, the selected segment */
+        --page: #fbfaf6;              /* the dashboard's own page colour (the bare stage between two screens) */
+        --forest: #1e2a1a;            /* brand */
+        --lime: #c5d86d;              /* brand, inside the tile only */
+        --cream: #f1eedc;             /* brand, inside the tile only */
+        --r-group: 26px;
+        --r-thumb: 10px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { background: var(--ground); }
+      #main {
+        position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        color: var(--label); font-family: "FilmText", sans-serif; -webkit-font-smoothing: antialiased;
+      }
+      #bg { position: absolute; inset: 0; background: var(--ground); }
+      .num { font-variant-numeric: tabular-nums; }
+
+      /* shared by the scenes: kicker over a sentence-case headline, top left, aligned with the window's left edge */
+      .kick { position: absolute; font-family: "FilmText", sans-serif; font-weight: 600; font-size: 28px; letter-spacing: -0.003em; line-height: 36px; color: var(--accent); white-space: nowrap; }
+      .kick span { color: var(--label-2); }
+      .head { position: absolute; font-family: "FilmDisplay", sans-serif; font-weight: 600; font-size: 76px; letter-spacing: -0.022em; line-height: 88px; color: var(--label); white-space: nowrap; }
+      /* a note: a white group (radius 26), no shadow */
+      .note { position: absolute; background: var(--group); border-radius: var(--r-group); padding: 40px 44px; }
+      .note .cap { font-weight: 500; font-size: 26px; line-height: 32px; color: var(--label-2); white-space: nowrap; }
+      .note .q { font-weight: 500; font-size: 34px; line-height: 44px; letter-spacing: -0.012em; color: var(--label); text-wrap: balance; }
+      .note .rule { height: 1.5px; background: var(--separator); margin: 28px 0; }
+      .dot { display: inline-block; width: 18px; height: 18px; border-radius: 50%; flex: none; }
+      .status { display: flex; align-items: center; gap: 16px; font-weight: 600; font-size: 36px; line-height: 44px; letter-spacing: -0.012em; white-space: nowrap; }
+      .status.red { color: var(--red); }
+      .status.red .dot { background: var(--red); }
+
+      /* ---------- the dashboard window (s3 to s6): HyperFrames' browser-device-stage rebuilt around media clips ----------
+         Its chrome from tokens: three muted dots, the address in a capsule (in Inter: the Outbreak pill's fixed-width face is banned),
+         a hairline edge and no shadow. The recording is the 1280 x 720 CSS px viewport at 2x, shown 1:1. */
+      #stage { position: absolute; left: 318.5px; top: 252px; width: 1283px; height: 779px; transform-origin: 50% 50%; }
+      #device { position: absolute; inset: 0; border: 1.5px solid var(--separator); border-radius: 24px; overflow: hidden; background: var(--group); }
+      #bar { position: absolute; left: 0; top: 0; width: 1280px; height: 56px; display: flex; align-items: center; padding: 0 24px;
+        background: #f7f7f9; border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+      #bar .dots { display: flex; gap: 9px; width: 140px; }
+      #bar .dots i { width: 13px; height: 13px; border-radius: 50%; background: #d1d1d6; }
+      #pill { margin: 0 auto; transform: translateX(-70px); height: 38px; padding: 0 30px; border-radius: 19px; background: var(--fill-3);
+        display: flex; align-items: center; font-weight: 500; font-size: 24px; letter-spacing: -0.005em; color: var(--label-2); white-space: nowrap; }
+      #screen { position: absolute; left: 0; top: 56px; width: 1280px; height: 720px; overflow: hidden; background: var(--page); }
+      .shot { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; overflow: hidden; }
+      .cam { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; transform-origin: 0 0; }
+      .cam video { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; display: block; }
+      /* a highlight on the words the voice names, inside the camera so it travels with the page */
+      .ring { position: absolute; border: 1.5px solid var(--accent); border-radius: 8px; background: rgba(31, 122, 77, 0.07); opacity: 0; }
+      .ring.red { border-color: var(--red); background: rgba(255, 56, 60, 0.05); }
+      /* a phrase inside running text: a selection-like mark with no border, so it never touches the neighbouring words
+         (the word gaps in the recording are only about 5 px) */
+      .ring.mark { border: none; border-radius: 6px; background: rgba(31, 122, 77, 0.18); }
+      #curwrap { position: absolute; inset: 0; }
+      #cursor { position: absolute; left: 0; top: 0; width: 23px; height: 29px; transform-origin: 2.9px 2px; opacity: 0; }
+      .ripple { position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+        border: 2.5px solid rgba(31, 122, 77, 0.85); background: rgba(31, 122, 77, 0.10); opacity: 0; }
+      /* a take played faster than it was recorded says so in its corner */
+      #chip { position: absolute; right: 18px; bottom: 18px; transform-origin: 100% 100%; height: 44px; padding: 0 20px; border-radius: 22px;
+        display: flex; align-items: center; background: rgba(255, 255, 255, 0.92); border: 1.5px solid rgba(0, 0, 0, 0.10);
+        font-weight: 600; font-size: 24px; letter-spacing: -0.005em; color: var(--label); white-space: nowrap; opacity: 0; }
+      /* s5: what code counted, under the fixer's claim */
+      #claimchip { position: absolute; left: 0; bottom: 34px; width: 1280px; display: flex; justify-content: center; opacity: 0; }
+      #claimchip div { display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 30px 0 24px; border-radius: 30px; background: var(--group);
+        border: 1.5px solid var(--separator); font-weight: 600; font-size: 30px; letter-spacing: -0.01em; color: var(--label); white-space: nowrap; }
+      #claimchip .dot { background: var(--red); }
+    </style>
+  </head>
+  <body>
+    <div id="main" data-composition-id="main" data-start="0" data-duration="69.9" data-width="1920" data-height="1080">
+      <div id="bg"></div>
+
+      <audio id="soundtrack" class="clip" src="assets/audio/mix.wav" data-start="0" data-duration="69.9" data-track-index="0" data-volume="1"></audio>
+
+      <div id="stage" data-layout-allow-overflow>
+        <div id="device">
+          <div id="bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="pill">localhost:8501</span></div>
+          <div id="screen">
+            <div class="shot" id="sh-goal"><div class="cam" data-layout-allow-overflow><video id="v-goal" class="clip" src="assets/shots/goal.mp4" muted playsinline data-start="19.4" data-duration="8.8333" data-media-start="0" data-track-index="10"></video></div></div>
+            <div class="shot" id="sh-judge"><div class="cam" data-layout-allow-overflow><video id="v-judge" class="clip" src="assets/shots/judge.mp4" muted playsinline data-start="28.2333" data-duration="10.6" data-media-start="0" data-track-index="11"></video></div></div>
+            <div class="shot" id="sh-repair"><div class="cam" data-layout-allow-overflow><video id="v-repair" class="clip" src="assets/shots/repair.mp4" muted playsinline data-start="38.8333" data-duration="12.3333" data-media-start="0" data-track-index="12"></video></div></div>
+            <div class="shot" id="sh-local"><div class="cam" data-layout-allow-overflow><video id="v-local" class="clip" src="assets/shots/local.mp4" muted playsinline data-start="51.1667" data-duration="7.0667" data-media-start="0" data-track-index="13"></video></div></div>
+            <div id="curwrap" data-layout-allow-overflow>
+              <svg id="cursor" viewBox="0 0 46 58" aria-hidden="true"><path d="M6 4 L6 46 L16.5 36.2 L23.4 52.4 L30.6 49.3 L23.8 33.4 L38.2 33.4 Z" fill="#1d1d1f" stroke="#fff" stroke-width="3.2" stroke-linejoin="round" /></svg>
+            </div>
+            <div id="claimchip"><div><span class="dot"></span>Code counted 360 words</div></div>
+            <div id="chip" class="num">22× speed</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="s1-open" data-composition-id="s1-open" data-composition-src="compositions/s1-open.html" data-start="0" data-duration="10.588" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div id="s2-lockup" data-composition-id="s2-lockup" data-composition-src="compositions/s2-lockup.html" data-start="10.588" data-duration="8.824" data-track-index="2" data-width="1920" data-height="1080"></div>
+      <div id="s3-goal" data-composition-id="s3-goal" data-composition-src="compositions/s3-goal.html" data-start="19.412" data-duration="8.823" data-track-index="3" data-width="1920" data-height="1080"></div>
+      <div id="s4-judge" data-composition-id="s4-judge" data-composition-src="compositions/s4-judge.html" data-start="28.235" data-duration="10.588" data-track-index="4" data-width="1920" data-height="1080"></div>
+      <div id="s5-repair" data-composition-id="s5-repair" data-composition-src="compositions/s5-repair.html" data-start="38.823" data-duration="12.353" data-track-index="5" data-width="1920" data-height="1080"></div>
+      <div id="s6-local" data-composition-id="s6-local" data-composition-src="compositions/s6-local.html" data-start="51.176" data-duration="7.059" data-track-index="6" data-width="1920" data-height="1080"></div>
+      <div id="s7-tests" data-composition-id="s7-tests" data-composition-src="compositions/s7-tests.html" data-start="58.235" data-duration="5.294" data-track-index="7" data-width="1920" data-height="1080"></div>
+      <div id="s8-end" data-composition-id="s8-end" data-composition-src="compositions/s8-end.html" data-start="63.529" data-duration="6.371" data-track-index="8" data-width="1920" data-height="1080"></div>
+    </div>
+    <script>
+      /* =====================================================================
+         The window. One dashboard window carries the real take through s3 to s6 (19.4 to 58.2 s): it settles, the camera
+         pushes in on what the voice names, it steps left for a note and comes back, and it lifts away. The four shots are
+         one continuous recording split at the scene lines (assets/edit.js), so they follow each other frame to frame.
+         Every move is keyed to a word time (window.VO) or a mark of the take (window.EDIT); the scenes' notes read the same
+         cue points (assets/cues.js).
+         ===================================================================== */
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const { EO, EI, EIO, CUE, ASIDE_D, FPS } = window.FILM;
+        const TM = window.TM, SH = window.EDIT.shots;
+        const tl = gsap.timeline({ paused: true });
+        const S = (f) => f / FPS - 0.004;
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+        const lerp = (a, b, e) => a + (b - a) * e;
+        const VW = 1280, VH = 720;
+        const T0 = CUE.win, T1 = TM.s6[1];
+
+        // ---- the settle (0.9 s: opacity over 66% of it, rise 4.5% of the frame, scale 0.965 -> 1), the "up" exit (0.5 s)
+        gsap.set("#stage", { opacity: 0, visibility: "hidden" });
+        tl.set("#stage", { visibility: "visible" }, T0 - 0.001);
+        tl.fromTo("#stage", { opacity: 0 }, { opacity: 1, duration: 0.594, ease: "power2.out", immediateRender: false }, T0);
+        tl.fromTo("#stage", { y: 48.6 }, { y: 0, duration: 0.9, ease: "power3.out", immediateRender: false }, T0);
+        tl.fromTo("#stage", { scale: 0.965 }, { scale: 1, duration: 0.9, ease: "power2.out", immediateRender: false }, T0);
+        tl.to("#stage", { opacity: 0, y: -43, duration: 0.5, ease: "power2.in" }, CUE.exit);
+        tl.set("#stage", { visibility: "hidden" }, T1);
+
+        // ---- the window steps left for a note, and comes back (the speed chip keeps its size)
+        // x -360 at 0.72: the window spans 138-1062 and the note (640 wide, at 1142) ends at 1782, so the pair sits centred with
+        // equal 138 px margins and an 80 px gap
+        const AX = -360, AS = 0.72;
+        const aside = (t) => {
+          tl.to("#stage", { x: AX, scale: AS, duration: ASIDE_D, ease: EIO }, t);
+          tl.to("#chip", { scale: 1 / AS, duration: ASIDE_D, ease: EIO }, t);
+        };
+        const back = (t) => {
+          tl.to("#stage", { x: 0, scale: 1, duration: ASIDE_D, ease: EIO }, t);
+          tl.to("#chip", { scale: 1, duration: ASIDE_D, ease: EIO }, t);
+        };
+        aside(CUE.aside3); back(CUE.back3);
+        aside(CUE.aside4); back(CUE.back4);
+
+        // ---- the shots: each shows from its first film frame to its last
+        const NAMES = ["goal", "judge", "repair", "local"];
+        const F0 = {}, F1 = {};
+        NAMES.forEach((n) => { F0[n] = Math.round(SH[n].start * FPS); F1[n] = F0[n] + SH[n].frames.length; });
+        NAMES.forEach((n) => {
+          tl.set("#sh-" + n, { visibility: "hidden" }, 0);
+          tl.set("#sh-" + n, { visibility: "visible" }, S(F0[n]));
+          tl.set("#sh-" + n, { visibility: "hidden" }, S(F1[n]));
+        });
+
+        // ---- the camera. A pose is the page point (CSS px of the 1280 x 720 take) at the screen's centre, and the zoom;
+        // the frame is clamped so the recording always fills the screen. A move eases (EIO, log-scale zoom) from the pose
+        // before it; a move with t0 === t1 is a cut. The take is 2x, so zooms up to 2 stay sharp.
+        const P = {
+          full: { x: 640, y: 360, s: 1 },
+          task: { x: 640, y: 300, s: 1.45 },             // the Task box, as the goal is typed
+          prog: { x: 640, y: 480, s: 1.3 },              // Run pipeline and the Progress rows
+          verdict: { x: 640, y: 640, s: 1.7 },           // the loop 1 judge row, opened
+          score: { x: 560, y: 600, s: 1.4 },             // Score progression after the scroll
+          tile: { x: 420, y: 619, s: 2.0 },              // "Current score 0/100"
+          rep: { x: 640, y: 430, s: 1.25 },              // loop 2 running
+          claim: { x: 633, y: 518.75, s: 1.88 },         // the fixer’s last paragraph (the claim; page y 327-710): the invented references above and the next heading below kept out
+          sum: { x: 640, y: 560, s: 1.25 },              // the scroll to Run summary
+          result: { x: 462, y: 573, s: 2.75 },           // Final score 0/100 and Result Failed (the black Download pill and the cut caption kept out)
+          vf: { x: 641, y: 221, s: 1.66 },               // Validator failures: the caption and word_limit 3 (page y 4-438: the next heading kept out)
+          vf2: { x: 641, y: 229.3, s: 1.72 },            // (page y 20-438)
+          met: { x: 640, y: 260, s: 1.4 },               // the Metrics summary row, as the pointer opens it
+          roles: { x: 641, y: 233, s: 1.75 },            // Total runtime and the per-role table
+        };
+        const mk = (n) => SH[n].marks;
+        const MOVES = [
+          [T0, T0, P.full],
+          [mk("goal").task_click - 0.05, mk("goal").task_click + 0.6, P.task],
+          [mk("goal").run_press - 0.25, mk("goal").run_press + 0.6, P.prog],
+          [mk("judge").judge1_open - 0.1, mk("judge").judge1_open + 0.7, P.verdict],
+          [33.45, 34.75, P.score],
+          [CUE.zero - 1.0, CUE.zero - 0.04, P.tile],
+          [CUE.back4, CUE.back4 + ASIDE_D, P.rep],
+          [CUE.claim - 0.3, CUE.claim + 0.45, P.claim],
+          [CUE.cut1, CUE.cut1, P.sum],
+          [CUE.failed - 0.55, CUE.failed + 0.05, P.result],
+          [CUE.cut2, CUE.cut2, P.vf],
+          [CUE.cut2 + 0.15, TM.s5[1] - 0.05, P.vf2],
+          [TM.s6[0] + 0.05, TM.s6[0] + 0.75, P.met],
+          [mk("local").metrics_view + 0.07, mk("local").metrics_view + 0.7, P.roles],   // lands inside "model," (54.49-54.9)
+        ];
+        const poseAt = (t) => {
+          let cur = MOVES[0][2];
+          for (const [t0, t1, p] of MOVES) {
+            if (t >= t1) { cur = p; continue; }
+            if (t > t0) {
+              const e = EIO((t - t0) / (t1 - t0));
+              return { x: lerp(cur.x, p.x, e), y: lerp(cur.y, p.y, e), s: Math.exp(lerp(Math.log(cur.s), Math.log(p.s), e)) };
+            }
+            break;
+          }
+          return cur;
+        };
+        const xf = (p) => ({ x: clamp(VW / 2 - p.s * p.x, VW - p.s * VW, 0), y: clamp(VH / 2 - p.s * p.y, VH - p.s * VH, 0), s: p.s });
+
+        // ---- per film frame: the active shot's camera, and the recorded pointer drawn on top at its own size
+        const screen = document.querySelector("#screen");
+        let lastCam = "", lastCur = "";
+        NAMES.forEach((n) => {
+          const cam = "#sh-" + n + " .cam", cur = SH[n].cursor;
+          for (let f = F0[n]; f < F1[n]; f++) {
+            const t = f / FPS, c = xf(poseAt(t));
+            const ck = n + c.x.toFixed(2) + "," + c.y.toFixed(2) + "," + c.s.toFixed(4);
+            if (ck !== lastCam || f === F0[n]) { tl.set(cam, { x: +c.x.toFixed(2), y: +c.y.toFixed(2), scale: +c.s.toFixed(4) }, S(f)); lastCam = ck; }
+            const [px, py, down] = cur[f - F0[n]];
+            const sx = px * c.s + c.x, sy = py * c.s + c.y;
+            const vis = px >= 0 && px <= VW && py >= 0 && py <= VH && sx >= 4 && sx <= VW - 22 && sy >= 4 && sy <= VH - 28;
+            const v = { x: +(sx - 2.9).toFixed(1), y: +(sy - 2).toFixed(1), scale: down ? 0.86 : 1, opacity: vis ? 1 : 0 };
+            const key = v.x + "," + v.y + "," + v.scale + "," + v.opacity;
+            if (key !== lastCur) { tl.set("#cursor", v, S(f)); lastCur = key; }
+            const prev = f > F0[n] ? cur[f - F0[n] - 1] : null;
+            if (down && vis && !(prev && prev[2])) {
+              const rp = document.createElement("div");
+              rp.className = "ripple";
+              rp.style.left = (px * c.s + c.x).toFixed(1) + "px"; rp.style.top = (py * c.s + c.y).toFixed(1) + "px";
+              screen.querySelector("#curwrap").appendChild(rp);
+              tl.fromTo(rp, { opacity: 0.95, scale: 0.4 }, { opacity: 0, scale: 1.5, duration: 0.55, ease: EO, immediateRender: false }, f / FPS);
+            }
+          }
+        });
+        tl.set("#cursor", { opacity: 0 }, S(F1.local));
+
+        // ---- highlights on the words the voice names (page coordinates, inside the camera; only while the page holds still)
+        // kind: undefined (accent ring), "red", or "mark" (a phrase in running text: r is the exact mark box, no padding)
+        const ring = (n, r, t0, t1, kind) => {
+          const d = document.createElement("div");
+          d.className = "ring" + (kind ? " " + kind : "");
+          if (kind === "mark") d.style.cssText = `left:${r[0]}px;top:${r[1]}px;width:${r[2]}px;height:${r[3]}px`;
+          else {
+            const pad = 5;
+            d.style.cssText = `left:${r[0] - pad}px;top:${r[1] - pad + 1}px;width:${r[2] + 2 * pad}px;height:${r[3] + 2 * pad - 2}px`;
+          }
+          document.querySelector("#sh-" + n + " .cam").appendChild(d);
+          tl.fromTo(d, { opacity: 0, scale: 1.05 }, { opacity: 1, scale: 1, duration: 0.45, ease: EO, immediateRender: false }, t0);
+          if (t1 != null) tl.to(d, { opacity: 0, duration: 0.25, ease: EI }, t1);
+        };
+        const R = (n, k) => SH[n].rects[k].rect;
+        const WA = window.FILM.WA;
+        // the two phrases in running text are marked edge to edge from the take's own pixels (review, 2026-11-02): judge shot
+        // frame 119, glyphs of "'total_score': 84, 'pass': True," x 788.0-977.5, y 595-610, the word before ends at 782.5, the
+        // next line starts at 621; repair shot frame 143, "meets ... word count." x 556.5-931.0, y 429-444, "draft" ends at
+        // 551.5, the line above ends at 419. Left edges sit in the middle of the word gap, 4 px above and below the glyphs.
+        ring("judge", [785.25, 591, 195.25, 23], WA("v06", "pass") - 0.05, 33.3, "mark");      // 'total_score': 84, 'pass': True,
+        ring("repair", [554, 425, 379.5, 23], CUE.claim + 0.4, CUE.cut1 - 0.3, "mark");       // "meets the 50-word tolerance for exact target word count."
+        ring("repair", R("repair", "result"), CUE.failed + 0.02, CUE.cut2 - 0.2, "red");      // Result: Failed
+        ring("judge", R("judge", "score_current"), CUE.zero, CUE.out4 + 0.1, "red");         // Current score 0/100, on "zero"
+        const vft = R("repair", "vf_table");
+        ring("repair", [vft[0], vft[1] + 37, vft[2], 37], WA("v10", "miss"), WA("v10", "claim") - 0.1);   // word_limit · 3
+        const vfc = R("repair", "vf_caption");
+        ring("repair", [vfc[0], vfc[1], 620, vfc[3]], WA("v10", "claim"), TM.s5[1] - 0.25);  // the dashboard's own caption (its text ends at x 900.5, not the column's 1000.5)
+        const rt = R("local", "role_table");
+        ring("local", [478, rt[1], 179, rt[3]], mk("local").metrics_view + 0.62, CUE.exit - 0.05);   // the model column: llama3.2:3b, on "model" as the push lands
+
+        // ---- the speed chip: shown for every stretch played faster than recorded, with its own factor
+        const runs = [];
+        NAMES.forEach((n) => SH[n].speed.forEach((s) => {
+          const last = runs[runs.length - 1];
+          if (last && last.label === s.label && Math.abs(last.t1 - s.t0) < 0.05) last.t1 = s.t1;
+          else runs.push({ t0: s.t0, t1: s.t1, label: s.label });
+        }));
+        runs.forEach((r) => {
+          tl.set("#chip", { innerHTML: r.label }, r.t0 - 0.002);
+          tl.fromTo("#chip", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power2.out", immediateRender: false }, r.t0);
+          tl.to("#chip", { opacity: 0, duration: 0.2, ease: "power1.in" }, r.t1);
+        });
+
+        // ---- s5: the screen swap at the cut past loop 3 (0.55 s through the bare stage, so no frame shows both screens)
+        const SW = 0.275;
+        tl.to(["#sh-repair", "#curwrap"], { opacity: 0, duration: SW, ease: "power1.in" }, CUE.cut1 - SW);
+        tl.fromTo(["#sh-repair", "#curwrap"], { opacity: 0, y: 17 }, { opacity: 1, y: 0, duration: SW, ease: "power2.out", immediateRender: false }, CUE.cut1);
+
+        // ---- s5: what code counted, under the fixer's claim; it leaves with the swap
+        tl.fromTo("#claimchip", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.5, ease: EO, immediateRender: false }, CUE.claimChip);
+        tl.to("#claimchip", { opacity: 0, duration: SW, ease: "power1.in" }, CUE.cut1 - SW);
+
+        // ---- the effect cues for the finish stage (film seconds; one vocabulary, SPEC SOUND): read window.__SFX
+        const presses = [];
+        NAMES.forEach((n) => SH[n].cursor.forEach((c, k) => {
+          if (c[2] && !(k && SH[n].cursor[k - 1][2]) && c[0] >= 0 && c[0] <= VW && c[1] >= 0 && c[1] <= VH) presses.push(+((F0[n] + k) / FPS).toFixed(3));
+        }));
+        const r3 = (x) => +x.toFixed(3);
+        window.__SFX = {
+          clicks: presses,                                                         // soft clicks on cursor presses
+          keys: SH.goal.marks.keys.map(r3),                                        // quiet key taps under the typed goal
+          ticks: [].concat(SH.goal.marks.row_done, SH.judge.marks.row_done, SH.repair.marks.row_done).map(r3),  // an agent row completes
+          whoosh: [[T0, 0.9], [CUE.aside3, ASIDE_D], [CUE.back3, ASIDE_D], [CUE.aside4, ASIDE_D], [CUE.back4, ASIDE_D],
+            [CUE.cut1 - SW, 2 * SW], [CUE.exit, 0.5]].map(([t, d]) => [r3(t), r3(d)]),  // window moves [start, length]
+          pops: [WA("v02", "88"), CUE.note3, CUE.note4, CUE.claimChip, WA("v12", "50")].concat(runs.map((r) => r.t0)).map(r3),  // a note or chip arrives
+          thuds: [CUE.zero, CUE.failed].map(r3),                                   // code overrules a model: the forced zero, Failed
+          rings: [WA("v06", "pass"), CUE.claim + 0.4, WA("v10", "miss"), WA("v10", "claim"), mk("local").metrics_view + 0.62].map(r3),
+          counter: [r3(WA("v12", "227")), r3(WA("v12", "tests"))],                 // a gentle rising tick run under the 227 count
+          drop: r3(TM.drop), lockup: r3(TM.s8[0] + 0.25),
+        };
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

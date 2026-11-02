@@ -1,0 +1,11 @@
+{
+  "name": "local-ai-orchestrator-launch-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "python3 -I build.py",
+    "lint": "npx --yes hyperframes@0.8.173 lint",
+    "check": "npx --yes hyperframes@0.8.173 check --json",
+    "render": "npx --yes hyperframes@0.8.173 render -o renders/raw.mp4 --fps 30"
+  }
+}

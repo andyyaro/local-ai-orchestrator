@@ -1,0 +1,56 @@
+<template>
+  <style>
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    #root { position: absolute; inset: 0; }
+    #s4-kick { left: 320px; top: 84px; }
+    .s4-head { left: 320px; top: 120px; }
+    /* the validator's own line, beside the window once it has stepped left */
+    #s4-note { left: 1142px; top: 452px; width: 640px; }
+    #s4-note .q { margin-top: 12px; }
+    #s4-note .nw { white-space: nowrap; }
+    #s4-note .status .from { margin-left: auto; font-weight: 500; font-size: 30px; color: var(--label-2); }
+  </style>
+  <div id="root" data-composition-id="s4-judge" data-width="1920" data-height="1080">
+    <div id="s4-kick" class="kick">Loop 1 of 3</div>
+    <div id="s4-h1" class="head s4-head">The judge says pass.</div>
+    <div id="s4-h2" class="head s4-head">Code counts the words.</div>
+    <div id="s4-note" class="note">
+      <div class="cap">loop01_validators.json</div>
+      <div class="q">“word count 216 is outside the <span class="nw">5-word</span> tolerance for exact target 50”</div>
+      <div class="rule"></div>
+      <div id="s4-zero" class="status red"><span class="dot"></span><span>Forced to 0</span><span class="from num">from 84</span></div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { WA, EO, EI, CUE } = window.FILM;
+      const TM = window.TM;
+      const S0 = TM.s4[0], S1 = TM.s4[1];
+      const W = (k, w, nth) => WA(k, w, nth) - S0;
+      const tl = gsap.timeline({ paused: true });
+      const rise = (el, t, d = 0.6, dy = 22) =>
+        tl.fromTo(el, { opacity: 0, y: dy, filter: "blur(5px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: d, ease: EO, immediateRender: false }, t - 0.04);
+      const out = (el, t, d = 0.3) => tl.to(el, { opacity: 0, y: -12, filter: "blur(5px)", duration: d, ease: EI }, t - d);
+
+      gsap.set(["#s4-kick", "#s4-h1", "#s4-h2", "#s4-note", "#s4-zero"], { opacity: 0 });
+      tl.fromTo("#s4-kick", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: EO, immediateRender: false }, 0.2);
+      // "The builder drafts. The judge, another agent, calls it a pass."
+      rise("#s4-h1", W("v06", "judge"));
+      // "Then code counts the words: far too many."
+      out("#s4-h1", W("v07", "counts"));
+      rise("#s4-h2", W("v07", "counts") + 0.02);
+
+      // the window steps left once Score progression has landed; the validator's line arrives on "too many"
+      const n0 = CUE.note4 - S0;
+      tl.fromTo("#s4-note", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: EO, immediateRender: false }, n0);
+      // "The score is forced to zero."
+      tl.fromTo("#s4-zero", { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: EO, immediateRender: false }, CUE.zero - S0 - 0.03);
+      tl.to("#s4-note", { opacity: 0, x: 40, duration: 0.3, ease: EI }, CUE.out4 - S0);
+
+      out(["#s4-kick", "#s4-h2"], S1 - S0 - 0.05, 0.3);
+      window.__timelines["s4-judge"] = tl;
+    })();
+  </script>
+</template>

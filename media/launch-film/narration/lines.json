@@ -1,0 +1,15 @@
+{
+  "v01": "Ask for a fifty-word summary of why sleep matters.",
+  "v02": "It came back at about four hundred and fifty, and still scored eighty-eight: a pass.",
+  "v03": "This is Local AI Orchestrator.",
+  "v04": "Seven local agents, no paid API calls, and one rule: a model can't mark its own homework.",
+  "v05": "Same goal, today. A supervisor sharpens it, and a plain rule picks the fast path.",
+  "v06": "The builder drafts. The judge, another agent, calls it a pass.",
+  "v07": "Then code counts the words: far too many. The score is forced to zero.",
+  "v08": "The critic and fixer get the exact count and try again.",
+  "v09": "Three loops on, it's still too long, so the run says failed.",
+  "v10": "A small model can miss. It can't claim a pass it didn't earn.",
+  "v11": "Every call ran locally, on a three-billion-parameter model, with no API keys.",
+  "v12": "Two hundred and twenty-seven tests pin it down, the fifty-word bug included.",
+  "v13": "Local AI Orchestrator. Private multi-agent runs on your Mac."
+}

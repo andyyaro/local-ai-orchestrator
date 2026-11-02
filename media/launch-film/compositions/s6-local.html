@@ -1,0 +1,38 @@
+<template>
+  <style>
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    #root { position: absolute; inset: 0; }
+    #s6-kick { left: 320px; top: 84px; }
+    .s6-head { left: 320px; top: 120px; }
+  </style>
+  <div id="root" data-composition-id="s6-local" data-width="1920" data-height="1080">
+    <div id="s6-kick" class="kick">Metrics summary</div>
+    <div id="s6-h1" class="head s6-head">Every call ran locally.</div>
+    <div id="s6-h2" class="head s6-head">On llama3.2:3b, with no API keys.</div>
+  </div>
+  <script>
+    (function () {
+      const { WA, EO, EI, CUE } = window.FILM;
+      const TM = window.TM;
+      const S0 = TM.s6[0], S1 = TM.s6[1];
+      const W = (k, w, nth) => WA(k, w, nth) - S0;
+      const tl = gsap.timeline({ paused: true });
+      const rise = (el, t, d = 0.6, dy = 22) =>
+        tl.fromTo(el, { opacity: 0, y: dy, filter: "blur(5px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: d, ease: EO, immediateRender: false }, t - 0.04);
+      const out = (el, t, d = 0.3) => tl.to(el, { opacity: 0, y: -12, filter: "blur(5px)", duration: d, ease: EI }, t - d);
+
+      gsap.set(["#s6-kick", "#s6-h1", "#s6-h2"], { opacity: 0 });
+      tl.fromTo("#s6-kick", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: EO, immediateRender: false }, 0.2);
+      // "Every call ran locally,"
+      rise("#s6-h1", W("v11", "every"));
+      // "on a three-billion-parameter model, with no API keys." (the per-role table: every row llama3.2:3b)
+      out("#s6-h1", W("v11", "3"));
+      rise("#s6-h2", W("v11", "3") + 0.02);
+      // they leave with the window ("up" exit)
+      tl.to(["#s6-kick", "#s6-h2"], { opacity: 0, y: -30, duration: 0.45, ease: EI }, CUE.exit - S0 + 0.02);
+      window.__timelines["s6-local"] = tl;
+    })();
+  </script>
+</template>

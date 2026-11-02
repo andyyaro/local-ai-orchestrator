@@ -1,0 +1,66 @@
+<template>
+  <style>
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    #root { position: absolute; inset: 0; }
+    #s3-kick { left: 320px; top: 84px; }
+    .s3-head { left: 320px; top: 120px; }
+    /* the path note, beside the window once it has stepped left */
+    #s3-note { left: 1142px; top: 432px; width: 640px; }
+    #s3-note .q { margin-top: 12px; }
+    .seg { position: relative; display: flex; height: 64px; padding: 5px; border-radius: 32px; background: var(--fill-3); }
+    .seg .thumb { position: absolute; left: 5px; top: 5px; height: 54px; border-radius: 27px; background: var(--accent); }
+    .seg span { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 28px; letter-spacing: -0.008em; color: var(--label); }
+    .seg span.on { color: #ffffff; }
+    #s3-rule-line { margin-top: 22px; font-weight: 500; font-size: 32px; line-height: 40px; letter-spacing: -0.01em; color: var(--label-2); white-space: nowrap; }
+    #s3-rule-line b { font-weight: 600; color: var(--label); }
+  </style>
+  <div id="root" data-composition-id="s3-goal" data-width="1920" data-height="1080">
+    <div id="s3-kick" class="kick">The dashboard <span>· a real run</span></div>
+    <div id="s3-h1" class="head s3-head">Same goal, today.</div>
+    <div id="s3-h2" class="head s3-head">A plain rule picks the path.</div>
+    <div id="s3-note" class="note">
+      <div class="cap">The supervisor’s goal</div>
+      <div class="q">“Summarize the importance of sleep in 50 words.”</div>
+      <div class="rule"></div>
+      <div class="seg"><i class="thumb"></i><span id="s3-fast">fast</span><span>normal</span><span>deep</span></div>
+      <div id="s3-rule-line"><b class="num">8 words</b> · 25 or fewer: fast</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { WA, EO, EI, CUE } = window.FILM;
+      const TM = window.TM;
+      const S0 = TM.s3[0], S1 = TM.s3[1];
+      const W = (k, w, nth) => WA(k, w, nth) - S0;
+      const tl = gsap.timeline({ paused: true });
+      const rise = (el, t, d = 0.6, dy = 22) =>
+        tl.fromTo(el, { opacity: 0, y: dy, filter: "blur(5px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: d, ease: EO, immediateRender: false }, t - 0.04);
+      const out = (el, t, d = 0.3) => tl.to(el, { opacity: 0, y: -12, filter: "blur(5px)", duration: d, ease: EI }, t - d);
+
+      gsap.set(["#s3-kick", "#s3-h1", "#s3-h2", "#s3-note"], { opacity: 0 });
+      // the selected segment is one third of the track, on "fast"
+      const seg = document.querySelector("#s3-note .seg"), thumb = seg.querySelector(".thumb");
+      thumb.style.width = (640 - 88 - 10) / 3 + "px";
+      gsap.set(thumb, { opacity: 0, scale: 0.85, transformOrigin: "50% 50%" });
+
+      tl.fromTo("#s3-kick", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: EO, immediateRender: false }, 0.25);
+      // "Same goal, today."
+      rise("#s3-h1", W("v05", "same"));
+      // "... and a plain rule picks the fast path."
+      out("#s3-h1", W("v05", "plain"));
+      rise("#s3-h2", W("v05", "plain") + 0.02);
+
+      // the window steps left (index.html, CUE.aside3); the note arrives on "fast", the segment lands on fast
+      const n0 = CUE.note3 - S0;
+      tl.fromTo("#s3-note", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: EO, immediateRender: false }, n0);
+      tl.to(thumb, { opacity: 1, scale: 1, duration: 0.45, ease: EO }, n0 + 0.35);
+      tl.set("#s3-fast", { className: "on" }, n0 + 0.4);
+      tl.to("#s3-note", { opacity: 0, x: 40, duration: 0.3, ease: EI }, CUE.out3 - S0);
+
+      out(["#s3-kick", "#s3-h2"], S1 - S0 - 0.05, 0.3);
+      window.__timelines["s3-goal"] = tl;
+    })();
+  </script>
+</template>

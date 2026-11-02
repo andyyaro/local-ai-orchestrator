@@ -1,0 +1,17 @@
+{
+  "scores": {
+    "completeness": 22,
+    "accuracy": 20,
+    "clarity": 23,
+    "usefulness": 19
+  },
+  "total_score": 0,
+  "pass": false,
+  "hard_fails": [
+    "constraint_violation"
+  ],
+  "rationale": "The draft provides a thorough explanation of the importance of sleep, backed by scientific evidence and research. While some minor adjustments could improve clarity and coherence, the overall structure is well-organized and easy to follow. The inclusion of references adds credibility to the claims made about sleep's impact on physical and mental health.\n\nDeterministic constraint check failed before Judge pass/fail was accepted: word count 360 is outside the 5-word tolerance for exact target 50",
+  "validator_failures": [
+    "word_limit"
+  ]
+}

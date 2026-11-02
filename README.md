@@ -8,6 +8,12 @@
 > through structured critique, revision, scoring, code verification, and final synthesis.
 > Runs on a MacBook Pro with no paid APIs. No internet connection required after setup.
 
+<p align="center">
+  <a href="https://andyyaro.github.io/local-ai-orchestrator/film.html"><img src="docs/assets/readme/local-ai-orchestrator-in-action.webp" alt="One real run in the dashboard, from the launch film: the goal &quot;Write a 50-word summary of why sleep matters.&quot; goes in and runs, a plain rule sends the supervisor's 8-word goal down the fast path, the judge model scores the draft 84 and calls it a pass, then code counts 216 words and forces the score to 0. Select to watch the 70-second film." width="920"></a>
+</p>
+
+<p align="center"><b>Watch the 70-second launch film:</b> <a href="https://andyyaro.github.io/local-ai-orchestrator/film.html">with sound and captions</a> · <a href="https://andyyaro.github.io/local-ai-orchestrator/film/local-ai-orchestrator-launch.mp4">MP4, 14.2 MB</a> · <a href="media/launch-film/">how it was made</a></p>
+
 ---
 
 ## The Problem
@@ -166,6 +172,8 @@ local-ai-orchestrator/
 │   └── .gitkeep
 ├── logs/
 │   └── .gitkeep
+├── media/
+│   └── launch-film/
 ├── run.py
 ├── run_langgraph.py
 ├── show_history.py

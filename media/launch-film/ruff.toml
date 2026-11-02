@@ -1,0 +1,3 @@
+# The film's scripts stay as they were when they built the film. CI's `ruff check .` lints the
+# project's own code, not this folder.
+extend-exclude = ["*"]

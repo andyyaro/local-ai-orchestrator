@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local AI Orchestrator launch film</title>
+<meta name="description" content="70 seconds on Local AI Orchestrator: seven local agents on your Mac, no paid API calls, and plain code that checks what the judge model scores.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="Local AI Orchestrator launch film">
+<meta property="og:description" content="Seven local agents, no paid API calls, and one rule: a model can't mark its own homework.">
+<meta property="og:image" content="https://andyyaro.github.io/local-ai-orchestrator/film/poster.jpg">
+<meta property="og:type" content="video.other">
+<link rel="icon" href="film/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #1e2a1a; --card: #2b3626; --ink: #f1eedc; --ink2: rgba(241, 238, 220, 0.74); --hair: rgba(241, 238, 220, 0.14); --lime: #c5d86d; --lime-press: #d4e48a; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  a { color: var(--lime); }
+  a:focus-visible, video:focus-visible, summary:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+  header img { display: block; height: 32px; width: auto; }
+  header a.back { font-size: 15px; text-decoration: none; }
+  h1 { font-size: clamp(28px, 4.4vw, 44px); line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 700; }
+  .lede { color: var(--ink2); font-size: clamp(17px, 2vw, 20px); margin: 0 0 24px; max-width: 760px; }
+  .player { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--hair); }
+  video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 8px; }
+  .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border-radius: 22px; font-weight: 600; font-size: 17px; text-decoration: none; }
+  .btn.primary { background: var(--lime); color: var(--bg); }
+  .btn.primary:hover { background: var(--lime-press); }
+  .btn.secondary { background: rgba(241, 238, 220, 0.12); color: var(--ink); }
+  .meta { color: var(--ink2); font-size: 15px; margin: 8px 0 0; }
+  details { margin-top: 32px; background: var(--card); border-radius: 14px; padding: 4px 20px; border: 1px solid var(--hair); }
+  summary { cursor: pointer; font-weight: 600; padding: 14px 0; min-height: 44px; }
+  details p { margin: 0 0 12px; }
+  .credits { margin-top: 32px; color: var(--ink2); font-size: 14px; line-height: 1.6; border-top: 1px solid var(--hair); padding-top: 20px; }
+  .credits p { margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="https://github.com/andyyaro/local-ai-orchestrator" aria-label="Local AI Orchestrator on GitHub"><img src="film/logo.svg" alt="local-ai-orchestrator" width="224" height="32"></a>
+    <a class="back" href="https://github.com/andyyaro/local-ai-orchestrator">On GitHub</a>
+  </header>
+  <main>
+    <h1>Local AI Orchestrator, in 70 seconds</h1>
+    <p class="lede">Seven local agents on your Mac, no paid API calls, and one rule: a model can't mark its own homework. One real run in the dashboard: the judge model calls a draft a pass, and plain code counts the words.</p>
+    <div class="player">
+      <video controls playsinline preload="metadata" poster="film/poster.jpg" width="1920" height="1080" aria-label="Local AI Orchestrator launch film, 70 seconds, with narration">
+        <source src="film/local-ai-orchestrator-launch.mp4" type="video/mp4">
+        <track kind="captions" src="film/local-ai-orchestrator-launch.vtt" srclang="en" label="English" default>
+        Your browser cannot play this video. <a href="film/local-ai-orchestrator-launch.mp4">Download the MP4</a>.
+      </video>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/andyyaro/local-ai-orchestrator#setup">Set it up</a>
+      <a class="btn secondary" href="https://github.com/andyyaro/local-ai-orchestrator#architecture">How it works</a>
+    </div>
+    <p class="meta">70 seconds, 1920 × 1080, English captions in the player. <a href="film/local-ai-orchestrator-launch.mp4" download>Download the MP4 (14.2 MB)</a> · <a href="film/local-ai-orchestrator-launch.vtt" download>Captions file (WebVTT)</a></p>
+
+    <details>
+      <summary>Transcript</summary>
+      <p>Ask for a fifty-word summary of why sleep matters. It came back at about four hundred and fifty, and still scored eighty-eight: a pass.</p>
+      <p>This is Local AI Orchestrator. Seven local agents, no paid API calls, and one rule: a model can't mark its own homework.</p>
+      <p>Same goal, today. A supervisor sharpens it, and a plain rule picks the fast path. The builder drafts. The judge, another agent, calls it a pass. Then code counts the words: far too many. The score is forced to zero.</p>
+      <p>The critic and fixer get the exact count and try again. Three loops on, it's still too long, so the run says failed. A small model can miss. It can't claim a pass it didn't earn.</p>
+      <p>Every call ran locally, on a three-billion-parameter model, with no API keys. Two hundred and twenty-seven tests pin it down, the fifty-word bug included.</p>
+      <p>Local AI Orchestrator. Private multi-agent runs on your Mac.</p>
+    </details>
+
+    <div class="credits">
+      <p>The opening run is from July 2026, before the fix, as the project's Phase 6b maintainer audit records it. The dashboard is a screen recording of one real run on 1 November 2026, every call on llama3.2:3b through Ollama. The model's work plays faster than real time and the corner of the window says by how much; typing, clicks and scrolls play at normal speed. The text the model wrote, references included, is its own and is not presented as fact.</p>
+      <p>Narration: Kokoro-82M, voice af_heart. Music: "Nostalgic Night" by Michael Ramir C. (Mixkit). Sound effects: Mixkit. Type: Inter and Inter Display (SIL OFL 1.1). <a href="https://github.com/andyyaro/local-ai-orchestrator/tree/main/media/launch-film">How the film was made</a>.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,79 @@
+{
+  "goal": "Write a 50-word summary of why sleep matters.",
+  "active_profile": "bootstrap",
+  "model_main_override": null,
+  "model_fast_override": null,
+  "role_models": {
+    "supervisor": "llama3.2:3b",
+    "planner": "llama3.2:3b",
+    "builder": "llama3.2:3b",
+    "judge": "llama3.2:3b",
+    "critic": "llama3.2:3b",
+    "fixer": "llama3.2:3b",
+    "synthesizer": "llama3.2:3b"
+  },
+  "iterations_run": 3,
+  "scores": [
+    0,
+    0,
+    0
+  ],
+  "code_verification": [],
+  "stop_reason": "hard_fail: ['constraint_violation']",
+  "final_score": 0,
+  "passed": false,
+  "mode": "writing",
+  "path": "fast",
+  "max_loops": 3,
+  "threshold": 70,
+  "metrics": {
+    "total_elapsed_ms": 646205,
+    "per_agent": {
+      "supervisor": {
+        "model": "llama3.2:3b",
+        "calls": 1,
+        "elapsed_ms": 45678
+      },
+      "builder": {
+        "model": "llama3.2:3b",
+        "calls": 1,
+        "elapsed_ms": 64488
+      },
+      "judge": {
+        "model": "llama3.2:3b",
+        "calls": 3,
+        "elapsed_ms": 118520
+      },
+      "critic": {
+        "model": "llama3.2:3b",
+        "calls": 2,
+        "elapsed_ms": 165776
+      },
+      "fixer": {
+        "model": "llama3.2:3b",
+        "calls": 2,
+        "elapsed_ms": 204757
+      },
+      "synthesizer": {
+        "model": "llama3.2:3b",
+        "calls": 1,
+        "elapsed_ms": 46835
+      }
+    },
+    "calls_by_model": {
+      "llama3.2:3b": 10
+    },
+    "path": "fast",
+    "retries": 0,
+    "fallbacks": 0,
+    "timeout_events": 0,
+    "validator_failures": {
+      "word_limit": 3
+    },
+    "hard_fails": {
+      "constraint_violation": 3,
+      "synthesizer_constraint_violation": 1
+    }
+  },
+  "db_run_id": 1
+}

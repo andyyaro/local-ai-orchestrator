@@ -1,0 +1,51 @@
+<template>
+  <style>
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-display: block; }
+    @font-face { font-family: "FilmText"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    @font-face { font-family: "FilmDisplay"; src: url("assets/fonts/InterDisplay-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+    #root { position: absolute; inset: 0; }
+    .s5-kick { left: 320px; top: 84px; }
+    .s5-head { left: 320px; top: 120px; }
+  </style>
+  <div id="root" data-composition-id="s5-repair" data-width="1920" data-height="1080">
+    <!-- the kicker names the dashboard section in the window -->
+    <div id="s5-k1" class="kick s5-kick">Loops 2 and 3</div>
+    <div id="s5-k2" class="kick s5-kick">Run summary</div>
+    <div id="s5-k3" class="kick s5-kick">Validator failures</div>
+    <div id="s5-h1" class="head s5-head">Critic and fixer try again.</div>
+    <div id="s5-h2" class="head s5-head">Three loops, still too long.</div>
+    <div id="s5-h3" class="head s5-head">It can’t claim a pass it didn’t earn.</div>
+  </div>
+  <script>
+    (function () {
+      const { WA, EO, EI, CUE } = window.FILM;
+      const TM = window.TM;
+      const S0 = TM.s5[0], S1 = TM.s5[1];
+      const W = (k, w, nth) => WA(k, w, nth) - S0;
+      const tl = gsap.timeline({ paused: true });
+      const rise = (el, t, d = 0.6, dy = 22) =>
+        tl.fromTo(el, { opacity: 0, y: dy, filter: "blur(5px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: d, ease: EO, immediateRender: false }, t - 0.04);
+      const out = (el, t, d = 0.3) => tl.to(el, { opacity: 0, y: -12, filter: "blur(5px)", duration: d, ease: EI }, t - d);
+      const kin = (el, t) => tl.fromTo(el, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: EO, immediateRender: false }, t);
+
+      gsap.set(["#s5-k1", "#s5-k2", "#s5-k3", "#s5-h1", "#s5-h2", "#s5-h3"], { opacity: 0 });
+      kin("#s5-k1", 0.2);
+      // "The critic and fixer get the exact count and try again."
+      rise("#s5-h1", W("v08", "critic"));
+      // "Three loops on, it's still too long, so the run says failed."
+      out("#s5-h1", W("v09", "three"));
+      rise("#s5-h2", W("v09", "three") + 0.02);
+      // the cut past loop 3 to the finished run (index.html swaps the screen), then the cut to Validator failures
+      out("#s5-k1", CUE.cut1 - S0, 0.25);
+      kin("#s5-k2", CUE.cut1 - S0 + 0.05);
+      out("#s5-k2", CUE.cut2 - S0, 0.25);
+      kin("#s5-k3", CUE.cut2 - S0 + 0.05);
+      // "A small model can miss. It can't claim a pass it didn't earn."
+      out("#s5-h2", W("v10", "it"));
+      rise("#s5-h3", W("v10", "it") + 0.02);
+
+      out(["#s5-k3", "#s5-h3"], S1 - S0 - 0.05, 0.3);
+      window.__timelines["s5-repair"] = tl;
+    })();
+  </script>
+</template>
